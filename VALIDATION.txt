@@ -1,0 +1,10 @@
+DCM 업체 배포용 공용양식 v9 검증
+
+- base-data.js 기본 거래처 데이터: 0건
+- 사내용 localStorage key와 분리: dcm-dashboard-partner-v9-data
+- Excel 업로드 후 업로드된 업체만 업체 선택 목록에 표시
+- 계산 로직은 DCM Dashboard v9와 동일
+- 업체/권역 내부 실사업자번호 중복 제거
+- 서로 다른 도매업체 간 동일 사업자번호는 각각 별도 1처
+- 신규 공급 - 공급 중단 = 공급 절대처수 증감
+- 공급 중단 상세에 기존 O/X 표시
