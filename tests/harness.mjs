@@ -48,12 +48,14 @@ ok('initial local payload '+Math.round(initialBytes/1024)+' KB');
 const partnerJs=read('partner.js');
 if(!partnerJs.includes("type:'partnerSaveAction'")||!partnerJs.includes('queuePartnerWrite'))fail('Authenticated Partner writes are not implemented');
 if(!partnerJs.includes('dual-master')||!partnerJs.includes('dual-partner'))fail('Master and Partner views are not visually separated');
-ok('authenticated Partner write-through and dual-source cells');
-for(const id of ['actionMore','riskMore','actionSyncStatus','kpiDeltaRate','all3Abs'])if(!html.includes('id="'+id+'"'))fail('Missing Partner UI: '+id);
+ok('authenticated Partner batch-save and dual-source Action cells');
+if(!partnerJs.includes("type:'partnerSaveActions'")||!partnerJs.includes('async function savePendingActions'))fail('Batch Save button handler missing');
+if(/queuePartnerWrite\(k,field/.test(partnerJs))fail('Unexpected immediate per-field Save path retained');
+for(const id of ['actionMore','riskMore','actionSyncStatus','kpiDeltaRate','all3Abs','saveToMasterBtn','pendingActionCount'])if(!html.includes('id="'+id+'"'))fail('Missing Partner UI: '+id);
 ok('progressive Action/Risk pagination and KPI ids');
 const hook="if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();";
 if(!partnerJs.includes(hook))fail('Partner test hook marker missing');
-const withTest=partnerJs.replace(hook,"window.__overrideTest={setPartner:p=>{partner=p},applyShared,savePartnerOverride,actionFor,reset:()=>{localStorage.setItem(overrideKey(),'{}');actionOverrides={};rebuildActions()}};"+hook);
+const withTest=partnerJs.replace(hook,"window.__overrideTest={setPartner:p=>{partner=p},setPassword:p=>{password=p},setData:d=>{data=d},mockRequest:f=>{request=f},disableRender:()=>{render=()=>{};pullSharedActions=async()=>{}},getPending:pendingChanges,savePendingActions,applyShared,savePartnerOverride,actionFor,reset:()=>{localStorage.setItem(overrideKey(),'{}');actionOverrides={};rebuildActions()}};"+hook);
 const store=()=>{const m=new Map();return {getItem:k=>m.has(k)?m.get(k):null,setItem:(k,v)=>m.set(k,String(v)),removeItem:k=>m.delete(k)}};
 const ls=store(),sess=store();
 const sandbox={window:{DCMLogic:L},document:{readyState:'loading',addEventListener(){},getElementById(){return null}},localStorage:ls,sessionStorage:sess,console:{warn(){}}};
@@ -86,4 +88,18 @@ test.applyShared({actions:[{key:'유진약품|||z',outlet:'유진약품',busines
 if(test.actionFor({outlet:'유진약품',businessNo:'z'}).plan!=='LEGACY LOCAL')fail('Legacy local Action lost');
 ok('legacy local actions migrated to overrides');
 
+
+test.setPartner('백제약품');test.setPassword('test-only');test.setData([{outlet:'백제약품 대전',businessNo:'123',month:'2026-10'}]);test.disableRender();
+let outbound=[];
+test.mockRequest(async payload=>{outbound.push(payload);if(payload.type==='partnerSaveActions')return {ok:true,results:payload.changes.map(x=>({...x,updatedAt:'2026-10-08T16:00:00+09:00',modifiedBy:'업체:백제약품'}))};return {ok:true,actions:[]};});
+test.applyShared({actions:[original]});
+test.savePartnerOverride(k,'plan','STAGED PARTNER PLAN');
+test.savePartnerOverride(k,'status','DONE');
+if(outbound.length)fail('Save happened automatically before Save to Master click');
+if(test.getPending().length!==2)fail('Two edited fields not staged');
+await test.savePendingActions();
+const submitted=outbound.filter(x=>x.type==='partnerSaveActions');
+if(submitted.length!==1||submitted[0].changes.length!==2)fail('Expected a single two-field batch request');
+if(test.getPending().length!==0)fail('Acknowledged pending edits were not cleared');
+ok('explicit Save batches staged changes and clears only acknowledged fields');
 console.log('HARNESS_OK');
