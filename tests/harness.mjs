@@ -49,6 +49,9 @@ const partnerJs=read('partner.js');
 if(!partnerJs.includes("type:'partnerSaveActions'")||!partnerJs.includes('savePendingActions'))fail('Authenticated Partner batch Save is not implemented');
 if(!partnerJs.includes('dual-master')||!partnerJs.includes('dual-partner'))fail('Master and Partner views are not visually separated');
 ok('authenticated Partner batch-save and dual-source Action cells');
+if(!partnerJs.includes("'05':'도매몰 미연동'")||partnerJs.includes("'08':'도매몰 연동 필요'"))
+  fail('Partner dictionary must have seven reasons and the new 05 label');
+
 if(!partnerJs.includes("type:'partnerSaveActions'")||!partnerJs.includes('async function savePendingActions'))fail('Batch Save button handler missing');
 if(/queuePartnerWrite\(k,field/.test(partnerJs))fail('Unexpected immediate per-field Save path retained');
 for(const id of ['actionMore','riskMore','actionSyncStatus','kpiDeltaRate','all3Abs','saveToMasterBtn','pendingActionCount'])if(!html.includes('id="'+id+'"'))fail('Missing Partner UI: '+id);
@@ -74,7 +77,9 @@ if(test.actionFor(testRow).reasonCode!=='02'||test.actionFor(testRow).dueDate!==
 test.savePartnerOverride(k,'reasonCode','');
 test.applyShared({actions:[{...original,reasonCode:'08'}]});
 if(test.actionFor(testRow).reasonCode!=='')fail('Empty local field did not win');
-test.reset();test.applyShared({actions:[{...original,plan:'RESET TO MASTER'}]});
+test.reset();test.applyShared({actions:[{...original,reasonCode:'08'}]});
+if(test.actionFor(testRow).reasonCode!=='05')fail('Legacy 08 did not normalize to 05');
+test.applyShared({actions:[{...original,plan:'RESET TO MASTER'}]});
 if(test.actionFor(testRow).plan!=='RESET TO MASTER')fail('Override reset did not restore master');
 ok('Partner per-field override wins, untouched fields refresh, reset restores master');
 test.applyShared({actions:[{...original,plan:'MASTER LATEST',partnerAction:{plan:'PARTNER SHEET',status:'DONE',editedFields:['plan','status'],modifiedBy:'업체:백제약품'}}]});
