@@ -3,7 +3,7 @@
 const ENDPOINT='https://script.google.com/macros/s/AKfycbygUlCo1x2izUO59cdbbBL3pbGLZgMaGrZz2lrqDfB8m4VtUHC-VqnEJMOeiQOUPXWCuQ/exec';
 const L=window.DCMLogic,E=L?.E||['대웅제약','대웅바이오','한올바이오'],TARGET=.95,$=id=>document.getElementById(id),XLSX_URL='https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
 let xlsxPromise=null;function ensureXLSX(){if(window.XLSX)return Promise.resolve(window.XLSX);if(xlsxPromise)return xlsxPromise;xlsxPromise=new Promise((resolve,reject)=>{const s=document.createElement('script');s.src=XLSX_URL;s.async=true;s.onload=()=>resolve(window.XLSX);s.onerror=()=>{xlsxPromise=null;reject(new Error('Excel 모듈 로딩 실패 · 네트워크/방화벽을 확인해 주세요.'));};document.head.appendChild(s);});return xlsxPromise;}
-const reasons={'01':'ERP/시스템 미구축','02':'도입 품목 미연동','03':'전산/데이터 오류','04':'거래처 연동 거부/미협조','05':'공급·거래 중단 예정','06':'신규 거래처 연동 예정','07':'당월 매출 미발생','08':'도매몰 연동 필요'};
+const reasons={'01':'ERP/시스템 미구축','02':'도입 품목 미연동','03':'전산/데이터 오류','04':'거래처 연동 거부/미협조','05':'도매몰 미연동','06':'신규 거래처 연동 예정','07':'당월 매출 미발생'};
 const SESSION_PARTNER='dcm-partner-login-company',SESSION_PASSWORD='dcm-partner-login-password';
 let partner='',password='',data=[],actions=[],remoteActions=[],actionIndex=new Map(),actionOverrides={},actionPoll=null,dataPoll=null,lastEditAt=0,actionLimit=30,riskLimit=60,historyCache=new Map(),saveQueue=Promise.resolve(),inFlight=new Set(),savingBatch=false,loadingData=false,loginInProgress=false,offlineServer=false;
 const esc=v=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
@@ -12,6 +12,7 @@ const monthLabel=m=>{if(!m)return '—';const [y,mm]=m.split('-');return `${y}�
 const EDIT_FIELDS=['reasonCode','plan','dueDate','status'];
 function actionKey(){return `dcm-partner-master-actions::${partner}`;}
 function overrideKey(){return `dcm-partner-action-overrides-v1::${partner}`;}
+function canonicalPartnerReasonCode(code){return String(code||'')==='08'?'05':String(code||'');}
 function loadOverrides(){
   let raw=localStorage.getItem(overrideKey());
   if(raw===null){
@@ -28,7 +29,10 @@ function loadOverrides(){
     raw=JSON.stringify(migrated);
     localStorage.setItem(overrideKey(),raw);
   }
-  try{const obj=JSON.parse(raw);return obj&&typeof obj==='object'&&!Array.isArray(obj)?obj:{};}catch(e){return {};}
+  try{const obj=JSON.parse(raw);if(obj&&typeof obj==='object'&&!Array.isArray(obj)){
+    Object.values(obj).forEach(entry=>{if(entry?.fields?.reasonCode==='08')entry.fields.reasonCode='05';});
+    return obj;
+  }return {};}catch(e){return {};}
 }
 function rebuildActions(){
   const map=new Map();
@@ -194,9 +198,13 @@ function renderAction(rr){
 }
 function applyShared(json){
   if(json.reasons&&typeof json.reasons==='object'&&!Array.isArray(json.reasons)){
-    Object.entries(json.reasons).forEach(([code,label])=>{if(/^\d{2}$/.test(code)&&typeof label==='string')reasons[code]=label;});
+    Object.keys(reasons).forEach(code=>{if(code==='05')reasons[code]='도매몰 미연동';}); // canonical seven categories only
   }
-  if(Array.isArray(json.actions))remoteActions=json.actions;
+  if(Array.isArray(json.actions))remoteActions=json.actions.map(a=>{
+    const c={...a};if(c.reasonCode==='08')c.reasonCode='05';
+    if(c.partnerAction?.reasonCode==='08')c.partnerAction={...c.partnerAction,reasonCode:'05'};
+    return c;
+  });
   actionOverrides=loadOverrides();rebuildActions();
 }
 function setActionStatus(msg,bad=false){
