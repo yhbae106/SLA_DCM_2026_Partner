@@ -22,3 +22,17 @@
 @media(max-width:900px){.partner-pagination{flex-wrap:wrap;justify-content:flex-start}#actionSyncStatus{text-align:left;max-width:none}}
 
 .local-action-marker{display:inline-block;margin-left:6px;padding:2px 5px;border-radius:5px;background:#fff7df;color:#a56e0e;font-size:9px;font-weight:800;white-space:nowrap}
+
+/* Master and wholesaler inputs displayed together, but never overwrite each other. */
+#action .dual-action-cell{min-width:200px;vertical-align:top}
+#action .dual-master,#action .dual-partner{display:grid;gap:5px;padding:8px;border-radius:8px;line-height:1.35}
+#action .dual-master{background:#edf4ff;border:1px solid #d5e3fa;font-size:10.5px}
+#action .dual-master b{color:#215da9;font-size:9px}
+#action .dual-master span{white-space:pre-wrap;overflow-wrap:anywhere;max-height:105px;overflow:auto}
+#action .dual-partner{margin-top:5px;background:#e9f8f1;border:1px solid #c9ead9}
+#action .dual-partner b{font-size:9px;color:#16865f}
+#action .dual-partner .action-field{width:100%;min-width:0;max-width:300px;font-size:11px}
+#action .dual-partner .action-field.plan{min-width:0}
+#action .dual-partner .action-field.pending{border:2px solid #e8a336}
+#action .pending-indicator{font-size:9px;color:#a76310}
+#action .table-wrap table{min-width:1200px}
