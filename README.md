@@ -36,3 +36,10 @@
 - 입력 시 `partnerSaveAction`으로 Google Apps Script를 호출하여 Google Sheet **Action Board N:T**에 저장합니다. 마스터의 A:M은 수정하지 않습니다.
 - 저장 실패 시 해당 브라우저에 미전송 값을 보관하고 재전송하며, Excel 다운로드에는 양측 입력 항목이 모두 들어갑니다.
 - 실제 서버 동기화는 마스터 저장소의 `apps-script/Code.gs`가 운영 Google Apps Script에 새 버전으로 배포되어야 가능합니다.
+
+## 2026-10-08 로그인 성능 / 저장(마스터에게 전달)
+- 로그인 시 `partnerLogin`은 인증 결과만 확인합니다. 월별 현황(`partnerDashboard`)·Action(`partnerActions`)은 독립 로딩하고, 같은 브라우저에서는 1시간 이내 임시 조회 결과를 먼저 보여줍니다.
+- 처음에는 Action 30건, Risk 60건만 그려 초기 DOM 부담을 줄였습니다. 더 보기로 추가 표시합니다.
+- 수정은 로컬에 임시 보관되며 **저장(마스터에게 전달)** 버튼을 클릭하면 최대 40건씩 단일 `partnerSaveActions` 요청으로 보내고 서버에서 확인된 필드만 로컬 미전송 항목에서 제거합니다.
+- 404/18초 지연 시 명확한 오류 메시지와 미전송 값 보존. 자동 재전송 루프는 제거했습니다.
+- 이 기능은 최신 `Code.gs`를 운영 Apps Script 배포에 반영해야 정상 동작합니다. 서버 URL이 404이면 GitHub Pages만 업데이트해도 해결되지 않습니다.
