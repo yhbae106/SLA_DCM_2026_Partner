@@ -5,7 +5,7 @@ const L=window.DCMLogic,E=L?.E||['대웅제약','대웅바이오','한올바이�
 let xlsxPromise=null;function ensureXLSX(){if(window.XLSX)return Promise.resolve(window.XLSX);if(xlsxPromise)return xlsxPromise;xlsxPromise=new Promise((resolve,reject)=>{const s=document.createElement('script');s.src=XLSX_URL;s.async=true;s.onload=()=>resolve(window.XLSX);s.onerror=()=>{xlsxPromise=null;reject(new Error('Excel 모듈 로딩 실패 · 네트워크/방화벽을 확인해 주세요.'));};document.head.appendChild(s);});return xlsxPromise;}
 const reasons={'01':'ERP/시스템 미구축','02':'도입 품목 미연동','03':'전산/데이터 오류','04':'거래처 연동 거부/미협조','05':'공급·거래 중단 예정','06':'신규 거래처 연동 예정','07':'당월 매출 미발생','08':'도매몰 연동 필요'};
 const SESSION_PARTNER='dcm-partner-login-company',SESSION_PASSWORD='dcm-partner-login-password';
-let partner='',password='',data=[],actions=[],remoteActions=[],actionIndex=new Map(),actionOverrides={},actionPoll=null,dataPoll=null,lastEditAt=0,actionLimit=100,riskLimit=150,historyCache=new Map(),saveQueue=Promise.resolve(),inFlight=new Set();
+let partner='',password='',data=[],actions=[],remoteActions=[],actionIndex=new Map(),actionOverrides={},actionPoll=null,dataPoll=null,lastEditAt=0,actionLimit=100,riskLimit=150,historyCache=new Map(),saveQueue=Promise.resolve(),inFlight=new Set(),savingBatch=false,loadingData=false,loginInProgress=false,offlineServer=false;
 const esc=v=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const pct=v=>v==null?'—':`${(v*100).toFixed(1)}%`,pp=v=>v==null||!Number.isFinite(v)?'—':`${v>=0?'+':''}${(v*100).toFixed(1)}%p`,key=r=>`${r.outlet}|||${r.businessNo}`;
 const monthLabel=m=>{if(!m)return '—';const [y,mm]=m.split('-');return `${y}년 ${Number(mm)}월`;};
@@ -56,6 +56,7 @@ function rebuildActions(){
     a.partnerPending=!!Object.keys(actionOverrides[a.key]?.fields||{}).length;
   }
   actionIndex=map;actions=[...map.values()];
+  updateSaveButton();
 }
 function mergeAcknowledgedPartnerField(k,field,value,answer){
   let item=remoteActions.find(a=>a.key===k);
@@ -74,49 +75,54 @@ function mergeAcknowledgedPartnerField(k,field,value,answer){
   }
   rebuildActions();
 }
-function queuePartnerWrite(k,field,value){
-  if(!partner||!password||!EDIT_FIELDS.includes(field))return;
-  const requestKey=JSON.stringify([partner,k,field,value]);
-  if(inFlight.has(requestKey))return;
-  inFlight.add(requestKey);
-  const company=partner,secret=password;
-  saveQueue=saveQueue.catch(()=>{}).then(async()=>{
-    try{
-      if(partner!==company||password!==secret)return;
-      setActionStatus('업체 입력을 Google Sheet에 저장 중...');
-      const result=await request({type:'partnerSaveAction',partner:company,password:secret,key:k,field,value});
-      if(partner===company){
-        mergeAcknowledgedPartnerField(k,field,value,result);
-        const count=Object.values(actionOverrides).reduce((sum,a)=>sum+Object.keys(a.fields||{}).length,0);
-        setActionStatus(count?`업체 입력 저장 완료 · 미전송 ${count}건`:'업체 입력 저장 완료 · 마스터와 Google Sheet에 반영');
-      }
-    }catch(err){
-      if(partner===company)setActionStatus('업체 입력 로컬 보관 · 서버 전송 실패: '+(err.message||err),true);
-      console.warn('[DCM Partner Action] save failed',err);
-    }finally{inFlight.delete(requestKey);}
-  });
-}
-function retryPendingUploads(){
-  if(!partner||!password||!data.length)return;
-  const valid=new Set(data.map(r=>key(r)));
-  let submitted=0;
-  for(const [k,override] of Object.entries(actionOverrides)){
-    if(!valid.has(k))continue;
-    for(const [f,value] of Object.entries(override.fields||{})){
-      if(submitted>=12)return;
-      if(EDIT_FIELDS.includes(f)){queuePartnerWrite(k,f,String(value??''));submitted++;}
-    }
+function pendingChanges(){
+ const valid=new Set(data.map(r=>key(r))),entries=[];
+ for(const [k,a] of Object.entries(actionOverrides)){
+  if(!valid.has(k))continue;
+  for(const [field,value] of Object.entries(a.fields||{})){
+   if(EDIT_FIELDS.includes(field))entries.push({key:k,field,value:String(value??'')});
   }
+ }
+ return entries;
 }
+function updateSaveButton(){
+ const count=pendingChanges().length,btn=$('saveToMasterBtn'),counter=$('pendingActionCount');
+ if(btn){btn.disabled=!count||savingBatch||!password;btn.textContent=savingBatch?'저장 중...':`저장(마스터에게 전달)${count?' · '+count+'건':''}`;}
+ if(counter)counter.textContent=count?`미전송 ${count}건 · 입력은 이 브라우저에 보관됨`:'미전송 변경사항 없음';
+}
+async function savePendingActions(){
+ if(savingBatch||!partner||!password||!data.length)return;
+ const changes=pendingChanges();if(!changes.length){setActionStatus('전송할 변경사항이 없습니다.');updateSaveButton();return;}
+ const company=partner,secret=password;savingBatch=true;updateSaveButton();
+ let completed=0;
+ try{
+  for(let i=0;i<changes.length;i+=40){
+   const batch=changes.slice(i,i+40);
+   const response=await request({type:'partnerSaveActions',partner:company,password:secret,changes:batch});
+   if(!Array.isArray(response.results)||response.results.length!==batch.length)throw new Error('서버 저장 확인 건수가 일치하지 않습니다.');
+   for(const item of response.results){
+    const original=batch.find(b=>b.key===item.key&&b.field===item.field&&b.value===String(item.value??''));
+    if(!original)throw new Error('서버가 예상치 못한 변경 결과를 반환했습니다.');
+    mergeAcknowledgedPartnerField(item.key,item.field,original.value,item);completed++;
+   }
+   setActionStatus(`저장 진행 중: ${completed} / ${changes.length}건`);
+  }
+  setActionStatus(`${completed}건 저장 완료 · Google Sheet로 전달됨`);
+  void pullSharedActions(true);
+ }catch(err){
+  setActionStatus(`서버 전달 실패 (${completed}/${changes.length}건 성공) · 미전송 내용 보관 · ${err.message}`,true);
+  console.warn('[DCM] save batch failed',err);
+ }finally{savingBatch=false;updateSaveButton();if(partner===company)render();}
+}
+function retryPendingUploads(){updateSaveButton();}
 function savePartnerOverride(k,field,value){
-  if(!EDIT_FIELDS.includes(field)||!k.includes('|||'))return;
-  const entry=actionOverrides[k]||{fields:{},updatedAt:''};
-  entry.fields={...(entry.fields||{}),[field]:String(value??'')};
-  entry.updatedAt=new Date().toISOString();
-  actionOverrides[k]=entry;localStorage.setItem(overrideKey(),JSON.stringify(actionOverrides));lastEditAt=Date.now();
-  rebuildActions();
-  setActionStatus('업체 입력 저장 요청 중 · 브라우저에도 임시 보관');
-  queuePartnerWrite(k,field,String(value??''));
+ if(!EDIT_FIELDS.includes(field)||!k.includes('|||'))return;
+ const entry=actionOverrides[k]||{fields:{},updatedAt:''};
+ entry.fields={...(entry.fields||{}),[field]:String(value??'')};
+ entry.updatedAt=new Date().toISOString();
+ actionOverrides[k]=entry;localStorage.setItem(overrideKey(),JSON.stringify(actionOverrides));lastEditAt=Date.now();
+ rebuildActions();updateSaveButton();
+ setActionStatus('업체 입력이 임시 저장되었습니다 · 저장(마스터에게 전달) 버튼을 눌러주세요');
 }
 function months(){return [...new Set(data.map(r=>r.month).filter(Boolean))].sort();}
 function scope(m){const o=$('outlet')?.value||'전체';return data.filter(r=>r.month===m&&(o==='전체'||r.outlet===o));}
