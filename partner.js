@@ -202,22 +202,38 @@ function applyShared(json){
 function setActionStatus(msg,bad=false){
   const el=$('actionSyncStatus');if(el){el.textContent=msg;el.className=bad?'sync-error':'sync-ok';}
 }
-async function pullSharedActions(){
-  if(!partner||!password||Date.now()-lastEditAt<10000||document.visibilityState==='hidden'||document.activeElement?.closest?.('#actionBody'))return;
+async function pullSharedActions(force=false){
+  if(!partner||!password||(!force&&(offlineServer||Date.now()-lastEditAt<10000||document.visibilityState==='hidden'||document.activeElement?.closest?.('#actionBody'))))return;
   try{
-    const json=await request({type:'partnerActions',partner,password});
+    const json=await request({type:'partnerActions',partner,password});offlineServer=false;
     const old=JSON.stringify(remoteActions);applyShared(json);
     if(JSON.stringify(remoteActions)!==old)render();
-    setActionStatus('마스터·업체 Action 최신값 확인 · 로컬 미전송 내용 유지');retryPendingUploads();
-  }catch(e){setActionStatus('공용 Action 최신값 확인 실패 · 기존 표시 유지 · '+e.message,true);}
+    setActionStatus('마스터·업체 Action 동기화 완료 · 미전송 내용 유지');updateSaveButton();
+  }catch(e){if(e.status===404)offlineServer=true;setActionStatus('공용 Action 조회 실패 · '+e.message,true);}
 }
 function startActionPolling(){
   clearInterval(actionPoll);clearInterval(dataPoll);
-  actionPoll=setInterval(pullSharedActions,60000);
+  actionPoll=setInterval(()=>pullSharedActions(false),60000);
   dataPoll=setInterval(()=>{if(document.visibilityState==='visible'&&Date.now()-lastEditAt>10000&&!document.activeElement?.closest?.('#actionBody'))pull();},180000);
 }
 function renderEmpty(){['rate','kpiDeltaRate','xCount','needCount','supplyCount','x2o','o2x','targetNeed','deltaRate','newSupply','stopSupply','changeX2O'].forEach(id=>{if($(id))$(id).textContent='-';});['persistAbs','persistState','all3Abs','all3State'].forEach(id=>{if($(id))$(id).textContent='-';});$('riskTotal').textContent='X 거래처 0처';$('riskBody').innerHTML='<tr><td colspan="8" class="empty">표시할 데이터가 없습니다.</td></tr>';$('actionBody').innerHTML='<tr><td colspan="9" class="empty">표시할 데이터가 없습니다.</td></tr>';$('entityCards').innerHTML=E.map(e=>`<div class="entity"><h3>${e}</h3><div class="rate">-</div></div>`).join('');}
-async function request(payload){const res=await fetch(ENDPOINT,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)});if(!res.ok)throw new Error(`HTTP ${res.status}`);const json=await res.json();if(!json.ok)throw new Error(json.error||'조회 실패');return json;}
+async function request(payload){
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),18000);
+ try{
+  const response=await fetch(ENDPOINT,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload),signal:controller.signal});
+  if(!response.ok){
+    const error=new Error(response.status===404?'HTTP 404 · Google Apps Script 웹앱 주소/배포가 유효하지 않습니다':`HTTP ${response.status}`);
+    error.status=response.status;throw error;
+  }
+  const text=await response.text();
+  let json;try{json=JSON.parse(text)}catch(_){throw new Error('서버에서 JSON이 아닌 응답을 보냈습니다. Apps Script 배포를 확인해 주세요.');}
+  if(!json.ok)throw new Error(json.error||'조회 실패');
+  return json;
+ }catch(err){
+  if(err.name==='AbortError')throw new Error('서버가 18초 이내 응답하지 않아 요청이 중단되었습니다.');
+  throw err;
+ }finally{clearTimeout(timer);}
+}
 async function pull(){if(!partner||!password)return;try{$('syncMsg').textContent='대웅제약 마스터 데이터 불러오는 중...';$('syncMsg').className='upload-msg';const json=await request({type:'partnerDashboard',partner,password});data=Array.isArray(json.data)?json.data:[];historyCache.clear();data.forEach(r=>{if(r.outlet==='백제약품 대전')r.manager='정직한';});applyShared(json);setActionStatus(Array.isArray(json.actions)?'마스터 Action 최신값 적용 · 업체 수정값 유지':'마스터 Action 연동 대기 · Apps Script 업데이트 필요',!Array.isArray(json.actions));refreshSelectors();render();startActionPolling();retryPendingUploads();$('syncMsg').textContent=`마스터 최신 데이터 적용 · ${data.length.toLocaleString()}건 · ${json.updatedAt||''}`;$('syncMsg').className='upload-msg sync-ok';}catch(e){$('syncMsg').textContent=`공용 데이터 연결 실패 · ${e.message}`;$('syncMsg').className='upload-msg sync-error';if(/접속코드|업체명/.test(e.message)){logout(false);$('loginError').textContent=e.message;}else renderEmpty();}}
 async function login(){const p=$('loginPartner').value||'',pw=$('loginPassword').value||'';$('loginError').textContent='';if(!p||!pw){$('loginError').textContent='업체명과 접속코드를 입력해 주세요.';return;}try{$('loginBtn').disabled=true;$('loginBtn').textContent='확인 중...';const json=await request({type:'partnerLogin',partner:p,password:pw});partner=json.partner||p;historyCache.clear();password=pw;sessionStorage.setItem(SESSION_PARTNER,partner);sessionStorage.setItem(SESSION_PASSWORD,password);$('partnerName').textContent=partner;$('partnerLogin').classList.add('hidden-login');data=Array.isArray(json.data)?json.data:[];data.forEach(r=>{if(r.outlet==='백제약품 대전')r.manager='정직한';});applyShared(json);setActionStatus(Array.isArray(json.actions)?'마스터 Action 최신값 적용 · 업체 수정값 유지':'마스터 Action 연동 대기 · Apps Script 업데이트 필요',!Array.isArray(json.actions));refreshSelectors();render();startActionPolling();retryPendingUploads();$('syncMsg').textContent=`마스터 최신 데이터 적용 · ${data.length.toLocaleString()}건 · ${json.updatedAt||''}`;$('syncMsg').className='upload-msg sync-ok';}catch(e){$('loginError').textContent=e.message||'로그인에 실패했습니다.';}finally{$('loginBtn').disabled=false;$('loginBtn').textContent='접속하기';}}
 function logout(clear=true){clearInterval(actionPoll);clearInterval(dataPoll);partner='';password='';data=[];actions=[];remoteActions=[];actionIndex.clear();actionOverrides={};historyCache.clear();if(clear){sessionStorage.removeItem(SESSION_PARTNER);sessionStorage.removeItem(SESSION_PASSWORD);}$('partnerName').textContent='-';$('partnerLogin').classList.remove('hidden-login');$('loginPassword').value='';renderEmpty();}
