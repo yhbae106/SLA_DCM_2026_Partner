@@ -46,8 +46,9 @@ if(initialBytes>120000)fail('Initial local payload budget exceeded: '+initialByt
 ok('initial local payload '+Math.round(initialBytes/1024)+' KB');
 
 const partnerJs=read('partner.js');
-if(/partnerSaveAction|saveSharedAction/.test(partnerJs))fail('Partner edits must not write to master');
-ok('Partner edits remain local-only');
+if(!partnerJs.includes("type:'partnerSaveAction'")||!partnerJs.includes('queuePartnerWrite'))fail('Authenticated Partner writes are not implemented');
+if(!partnerJs.includes('dual-master')||!partnerJs.includes('dual-partner'))fail('Master and Partner views are not visually separated');
+ok('authenticated Partner write-through and dual-source cells');
 for(const id of ['actionMore','riskMore','actionSyncStatus','kpiDeltaRate','all3Abs'])if(!html.includes('id="'+id+'"'))fail('Missing Partner UI: '+id);
 ok('progressive Action/Risk pagination and KPI ids');
 const hook="if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();";
@@ -74,6 +75,11 @@ if(test.actionFor(testRow).reasonCode!=='')fail('Empty local field did not win')
 test.reset();test.applyShared({actions:[{...original,plan:'RESET TO MASTER'}]});
 if(test.actionFor(testRow).plan!=='RESET TO MASTER')fail('Override reset did not restore master');
 ok('Partner per-field override wins, untouched fields refresh, reset restores master');
+test.applyShared({actions:[{...original,plan:'MASTER LATEST',partnerAction:{plan:'PARTNER SHEET',status:'DONE',editedFields:['plan','status'],modifiedBy:'업체:백제약품'}}]});
+const merged=test.actionFor(testRow);
+if(merged.plan!=='PARTNER SHEET'||merged.masterAction.plan!=='MASTER LATEST')fail('Partner Sheet value hid the master original');
+if(merged.partnerAction.plan!=='PARTNER SHEET'||merged.partnerAction.status!=='DONE')fail('Partner write was not preserved');
+ok('master and partner values remain independent and visible together');
 test.setPartner('유진약품');
 ls.setItem('dcm-partner-master-actions::유진약품',JSON.stringify([{key:'유진약품|||z',outlet:'유진약품',businessNo:'z',plan:'LEGACY LOCAL'}]));
 test.applyShared({actions:[{key:'유진약품|||z',outlet:'유진약품',businessNo:'z',plan:'MASTER'}]});
