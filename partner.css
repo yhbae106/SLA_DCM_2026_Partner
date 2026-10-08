@@ -14,3 +14,9 @@
 .kpis>.kpi small{display:block;line-height:1.4}
 @media(max-width:1390px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.kpis>.kpi,.kpis>.kpi:nth-child(-n+4){grid-column:auto}}
 @media(max-width:700px){.kpis{grid-template-columns:1fr}}
+
+/* Progressive table rendering reduces initial DOM work on large wholesaler data. */
+.partner-pagination{display:flex;align-items:center;justify-content:flex-end;gap:12px;padding:12px 4px 1px;font-size:11px;color:#66758a}
+.partner-pagination button[hidden]{display:none!important}
+#actionSyncStatus{font-size:11px;line-height:1.45;max-width:320px;text-align:right}
+@media(max-width:900px){.partner-pagination{flex-wrap:wrap;justify-content:flex-start}#actionSyncStatus{text-align:left;max-width:none}}
