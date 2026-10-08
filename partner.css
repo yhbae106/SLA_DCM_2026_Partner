@@ -36,3 +36,11 @@
 #action .dual-partner .action-field.pending{border:2px solid #e8a336}
 #action .pending-indicator{font-size:9px;color:#a76310}
 #action .table-wrap table{min-width:1200px}
+
+/* Save-to-master visible near Action Board title */
+#saveToMasterBtn{background:#1474d4;color:#fff;font-weight:800;border:1px solid #1474d4;min-width:188px}
+#saveToMasterBtn:hover:not(:disabled){background:#0e5fae}
+#saveToMasterBtn:disabled{opacity:.58;cursor:not-allowed}
+#pendingActionCount{font-weight:800;color:#bb6f12}
+#action .section-head{flex-wrap:wrap;gap:10px}
+#actionSyncStatus{max-width:460px;overflow-wrap:anywhere}
