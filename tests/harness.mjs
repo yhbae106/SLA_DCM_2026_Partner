@@ -46,7 +46,7 @@ if(initialBytes>120000)fail('Initial local payload budget exceeded: '+initialByt
 ok('initial local payload '+Math.round(initialBytes/1024)+' KB');
 
 const partnerJs=read('partner.js');
-if(!partnerJs.includes("type:'partnerSaveAction'")||!partnerJs.includes('queuePartnerWrite'))fail('Authenticated Partner writes are not implemented');
+if(!partnerJs.includes("type:'partnerSaveActions'")||!partnerJs.includes('savePendingActions'))fail('Authenticated Partner batch Save is not implemented');
 if(!partnerJs.includes('dual-master')||!partnerJs.includes('dual-partner'))fail('Master and Partner views are not visually separated');
 ok('authenticated Partner batch-save and dual-source Action cells');
 if(!partnerJs.includes("type:'partnerSaveActions'")||!partnerJs.includes('async function savePendingActions'))fail('Batch Save button handler missing');
