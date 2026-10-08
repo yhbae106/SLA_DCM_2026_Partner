@@ -30,3 +30,9 @@
 
 ## GitHub Pages
 압축을 푼 파일 전체를 저장소 루트에 올리고 Settings > Pages에서 `Deploy from a branch`, `main`, `/(root)`를 선택합니다.
+
+## 2026-10-08 이중 작성 Action Board
+- 마스터 Action을 파란색 **읽기 전용**으로 표시하며, 업체 조치 내용은 초록색 **입력** 칸에 별도 작성합니다.
+- 입력 시 `partnerSaveAction`으로 Google Apps Script를 호출하여 Google Sheet **Action Board N:T**에 저장합니다. 마스터의 A:M은 수정하지 않습니다.
+- 저장 실패 시 해당 브라우저에 미전송 값을 보관하고 재전송하며, Excel 다운로드에는 양측 입력 항목이 모두 들어갑니다.
+- 실제 서버 동기화는 마스터 저장소의 `apps-script/Code.gs`가 운영 Google Apps Script에 새 버전으로 배포되어야 가능합니다.
