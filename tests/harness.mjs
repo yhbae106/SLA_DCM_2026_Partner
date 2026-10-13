@@ -15,7 +15,7 @@ ok('SheetJS is lazy-loaded');
 for(const p of ['app.js','data/base-data.js','dw-illustration.svg','partner-upload-v2.js','styles.css'])if(exists(p))fail('Legacy unused asset returned: '+p);
 ok('legacy unused assets remain removed');
 
-const required=['partnerLogin','loginPartner','loginPassword','loginBtn','outlet','month','rate','riskBody','actionBody','exportAction'];
+const required=['partnerLogin','loginPartner','loginPassword','loginBtn','outlet','month','rate','actionBody','exportAction','actionView','actionEntity','actionSearch','actionFilterReset','actionFilterCount','actionViewTitle'];
 for(const id of required)if(!html.includes('id="'+id+'"'))fail('Missing required DOM id: '+id);
 ok('required partner DOM contract');
 
@@ -54,11 +54,20 @@ if(!partnerJs.includes("'05':'도매몰 미연동'")||partnerJs.includes("'08':'
 
 if(!partnerJs.includes("type:'partnerSaveActions'")||!partnerJs.includes('async function savePendingActions'))fail('Batch Save button handler missing');
 if(/queuePartnerWrite\(k,field/.test(partnerJs))fail('Unexpected immediate per-field Save path retained');
-for(const id of ['actionMore','riskMore','actionSyncStatus','kpiDeltaRate','all3Abs','saveToMasterBtn','pendingActionCount'])if(!html.includes('id="'+id+'"'))fail('Missing Partner UI: '+id);
-ok('progressive Action/Risk pagination and KPI ids');
+for(const id of ['actionMore','actionSyncStatus','kpiDeltaRate','all3Abs','saveToMasterBtn','pendingActionCount'])if(!html.includes('id="'+id+'"'))fail('Missing Partner UI: '+id);
+ok('unified Action pagination, searchable filters and KPI ids');
+if(html.includes('id="risk"')||html.includes('id="riskBody"')||html.includes('data-jump="risk"'))
+  fail('Duplicate X-risk table was not removed');
+if(!html.includes('</tr></thead><tbody id="actionBody"'))fail('Unified Action Board table is malformed');
+for(const company of ['대웅제약','대웅바이오','한올바이오']){
+  if(!html.includes('<th>'+company+'</th>'))fail('Missing O/X status header for '+company);
+}
+if(!partnerJs.includes("E.map(status).join('')")||!partnerJs.includes('aria-pressed'))
+  fail('3-company status cells or accessible KPI selection missing');
+ok('duplicate X table removed, 3-company O/X visible, keyboard KPI cards');
 const hook="if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();";
 if(!partnerJs.includes(hook))fail('Partner test hook marker missing');
-const withTest=partnerJs.replace(hook,"window.__overrideTest={setPartner:p=>{partner=p},setPassword:p=>{password=p},setData:d=>{data=d},mockRequest:f=>{request=f},disableRender:()=>{render=()=>{};pullSharedActions=async()=>{}},getPending:pendingChanges,savePendingActions,applyShared,savePartnerOverride,actionFor,reset:()=>{localStorage.setItem(overrideKey(),'{}');actionOverrides={};rebuildActions()}};"+hook);
+const withTest=partnerJs.replace(hook,"window.__overrideTest={setPartner:p=>{partner=p},setPassword:p=>{password=p},setData:d=>{data=d;historyCache.clear()},mockRequest:f=>{request=f},disableRender:()=>{render=()=>{};pullSharedActions=async()=>{}},getPending:pendingChanges,savePendingActions,applyShared,savePartnerOverride,actionFor,risks,buildActionContext,filterActionRows,setActionView,getView:()=>actionView,setActionContext:c=>{actionContext=c},renderAction,reset:()=>{localStorage.setItem(overrideKey(),'{}');actionOverrides={};rebuildActions()}};"+hook);
 const store=()=>{const m=new Map();return {getItem:k=>m.has(k)?m.get(k):null,setItem:(k,v)=>m.set(k,String(v)),removeItem:k=>m.delete(k)}};
 const ls=store(),sess=store();
 const sandbox={window:{DCMLogic:L},document:{readyState:'loading',addEventListener(){},getElementById(){return null}},localStorage:ls,sessionStorage:sess,console:{warn(){}}};
@@ -107,4 +116,57 @@ const submitted=outbound.filter(x=>x.type==='partnerSaveActions');
 if(submitted.length!==1||submitted[0].changes.length!==2)fail('Expected a single two-field batch request');
 if(test.getPending().length!==0)fail('Acknowledged pending edits were not cleared');
 ok('explicit Save batches staged changes and clears only acknowledged fields');
+
+const S2=(a,b,c)=>({'대웅제약':a,'대웅바이오':b,'한올바이오':c});
+const r=(month,num,name,status)=>({month,outlet:'백제약품 대전',businessNo:num,businessName:name,manager:'정직한',statuses:status});
+const pRows=[
+  r('2026-08','1','A-One',S2('X','O',null)),
+  r('2026-08','2','B-ThreeX',S2('X','X','X')),
+  r('2026-08','3','C-ImprovedOnly',S2('X',null,null)),
+  r('2026-08','4','D-AlreadyO',S2('O','O','O'))
+];
+const cRows=[
+  r('2026-09','1','A-One',S2('O','X',null)),
+  r('2026-09','2','B-ThreeX',S2('X','X','X')),
+  r('2026-09','3','C-ImprovedOnly',S2('O',null,null)),
+  r('2026-09','4','D-AlreadyO',S2('O','O','O'))
+];
+test.setData([...pRows,...cRows]);
+const changeFixture=L.compare(pRows,cRows);
+const rrFixture=test.risks('2026-09',cRows,pRows,changeFixture);
+const context=test.buildActionContext('2026-09',cRows,pRows,changeFixture,rrFixture);
+const ids=(view,entity='all',search='')=>test.filterActionRows(context,view,entity,search).map(x=>String(x.businessNo)).sort().join(',');
+if(ids('x')!=='1,2')fail('X filter must include only currently unlinked merchants');
+if(ids('persist')!=='2'||ids('all3')!=='2')fail('Persistent X / all-3-X filters failed');
+if(ids('improved')!=='1,3')fail('Improvement filter must include O-only now improved merchants');
+if(ids('worsened')!=='1')fail('O-to-X filter includes incorrect merchants');
+if(ids('evaluated')!=='1,2,3,4'||ids('supplied')!=='1,2,3,4')fail('Evaluated/supply drilldown omitted O-only merchants');
+if(ids('compared')!=='1,2,3,4')fail('Monthly comparable merchants not included');
+if(ids('x','대웅제약')!=='2')fail('Company X selection did not narrow correctly');
+if(ids('worsened','대웅바이오')!=='1')fail('Company O-to-X selection failed');
+if(ids('evaluated','all','ImprovedOnly')!=='3'||ids('x','all','not-found')!=='')fail('Search filter malfunction');
+const duplicateContext=test.buildActionContext('2026-09',[...cRows,cRows[0]],pRows,changeFixture,rrFixture);
+if(test.filterActionRows(duplicateContext,'evaluated').length!==4)fail('Duplicate same merchant surfaced twice');
+test.setActionView('worsened',{scroll:false});
+if(test.getView()!=='worsened')fail('Card/select drilldown state did not update');
+ok('KPI drilldowns, company filters, search and deduplicated merchants');
+const uiElements=new Map();
+for(const id of ['actionBody','actionFilterCount','actionViewTitle','actionShown','actionMore']){
+  uiElements.set(id,{innerHTML:'',textContent:'',hidden:false});
+}
+sandbox.document.getElementById=id=>uiElements.get(id)||null;
+sandbox.document.querySelectorAll=()=>[];
+test.setActionContext(context);
+test.setActionView('evaluated',{scroll:false});
+const tableHtml=uiElements.get('actionBody').innerHTML;
+if(!tableHtml.includes('status-o')||!tableHtml.includes('status-x')||!tableHtml.includes('status-na'))
+  fail('Rendered Action rows do not show all O/X/unassessed status chips');
+if(!tableHtml.includes('readonly-action'))
+  fail('Current O-only merchants without saved Action must be read only');
+if(!tableHtml.includes('business-number')||!tableHtml.includes('dual-master')||!tableHtml.includes('dual-partner'))
+  fail('Merchant business ID or independent master/Partner inputs missing');
+if(!uiElements.get('actionFilterCount').textContent.includes('4처'))
+  fail('Action filtered results count does not show unique merchant total');
+ok('rendered 3-company O/X chips, master/Partner fields and read-only O-only rows');
+
 console.log('HARNESS_OK');

@@ -5,7 +5,7 @@ const L=window.DCMLogic,E=L?.E||['대웅제약','대웅바이오','한올바이�
 let xlsxPromise=null;function ensureXLSX(){if(window.XLSX)return Promise.resolve(window.XLSX);if(xlsxPromise)return xlsxPromise;xlsxPromise=new Promise((resolve,reject)=>{const s=document.createElement('script');s.src=XLSX_URL;s.async=true;s.onload=()=>resolve(window.XLSX);s.onerror=()=>{xlsxPromise=null;reject(new Error('Excel 모듈 로딩 실패 · 네트워크/방화벽을 확인해 주세요.'));};document.head.appendChild(s);});return xlsxPromise;}
 const reasons={'01':'ERP/시스템 미구축','02':'도입 품목 미연동','03':'전산/데이터 오류','04':'거래처 연동 거부/미협조','05':'도매몰 미연동','06':'신규 거래처 연동 예정','07':'당월 매출 미발생'};
 const SESSION_PARTNER='dcm-partner-login-company',SESSION_PASSWORD='dcm-partner-login-password';
-let partner='',password='',data=[],actions=[],remoteActions=[],actionIndex=new Map(),actionOverrides={},actionPoll=null,dataPoll=null,lastEditAt=0,actionLimit=30,riskLimit=60,historyCache=new Map(),saveQueue=Promise.resolve(),inFlight=new Set(),savingBatch=false,loadingData=false,loginInProgress=false,offlineServer=false;
+let partner='',password='',data=[],actions=[],remoteActions=[],actionIndex=new Map(),actionOverrides={},actionPoll=null,dataPoll=null,lastEditAt=0,actionLimit=30,riskLimit=60,historyCache=new Map(),saveQueue=Promise.resolve(),inFlight=new Set(),savingBatch=false,loadingData=false,loginInProgress=false,offlineServer=false,actionView='x',actionEntity='all',actionSearch='',actionContext=null,activeKpi=null;
 const esc=v=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const pct=v=>v==null?'—':`${(v*100).toFixed(1)}%`,pp=v=>v==null||!Number.isFinite(v)?'—':`${v>=0?'+':''}${(v*100).toFixed(1)}%p`,key=r=>`${r.outlet}|||${r.businessNo}`;
 const monthLabel=m=>{if(!m)return '—';const [y,mm]=m.split('-');return `${y}년 ${Number(mm)}월`;};
@@ -116,7 +116,7 @@ async function savePendingActions(){
  }catch(err){
   setActionStatus(`서버 전달 실패 (${completed}/${changes.length}건 성공) · 미전송 내용 보관 · ${err.message}`,true);
   console.warn('[DCM] save batch failed',err);
- }finally{savingBatch=false;updateSaveButton();if(partner===company)render();}
+ }finally{savingBatch=false;updateSaveButton();if(partner===company)renderAction();}
 }
 function retryPendingUploads(){updateSaveButton();}
 function savePartnerOverride(k,field,value){
@@ -154,12 +154,84 @@ const actionMap=()=>new Map(actions.map(a=>[a.key,a]));
 function actionFor(r){return actionIndex.get(key(r))||{};}
 function statusLabel(s){return ({TODO:'미조치',IN_PROGRESS:'진행중',WAITING:'회신대기',DONE:'완료'})[s]||'미조치';}
 function renderPersist(cur,curr){const rows=streakRows(cur,curr);let pa=0,ps=0,a3=0,a3s=0;rows.forEach(r=>{let hp=false;E.forEach(e=>{if((r.entityStreak[e]||0)>=2){ps++;hp=true;}});if(hp)pa++;if(E.every(e=>L.normStatus(r.statuses?.[e])==='X')){a3++;a3s+=3;}});$('persistAbs').textContent=`${pa}처`;if($('persistState'))$('persistState').textContent=`${ps}건`;$('all3Abs').textContent=`${a3}처`;if($('all3State'))$('all3State').textContent=`${a3s}건`;}
-function render(){const cur=$('month')?.value;if(!cur)return renderEmpty();const prev=prevMonth(cur),curr=scope(cur),prior=prev?scope(prev):[],s=L.summarize(curr),ps=L.summarize(prior),ch=L.compare(prior,curr),rr=risks(cur,curr,prior,ch);$('scopeLabel').textContent=`${partner} · ${$('outlet').value} · ${monthLabel(cur)}`;$('rate').textContent=pct(s.rate);$('rate').closest('.kpi').querySelector('small').textContent=`O ${s.O.toLocaleString()}건 / O+X ${s.evaluated.toLocaleString()}건`;$('xCount').textContent=s.X.toLocaleString();$('needCount').textContent=s.needAbsolute.toLocaleString();$('supplyCount').textContent=s.suppliedAbsolute.toLocaleString();$('x2o').textContent=(ch.xToO||[]).length.toLocaleString();$('o2x').textContent=(ch.oToX||[]).length.toLocaleString();if($('targetNeed'))$('targetNeed').textContent=`${s.evaluated?Math.ceil(Math.max(0,TARGET*s.evaluated-s.O)):0}건`;renderPersist(cur,curr);$('entityCards').innerHTML=E.map(e=>{const x=s.byEntity[e];return `<div class="entity"><h3>${e}</h3><div class="rate">${pct(x.rate)}</div><div class="meter"><i style="width:${x.rate==null?0:x.rate*100}%"></i></div><small>O ${x.O.toLocaleString()} · X ${x.X.toLocaleString()} · 평가 ${(x.O+x.X).toLocaleString()}</small></div>`}).join('');$('changeSub').textContent=prev?`${monthLabel(prev)} → ${monthLabel(cur)}`:'비교할 이전 월이 없습니다.';$('deltaRate').textContent=prev&&s.rate!=null&&ps.rate!=null?pp(s.rate-ps.rate):'—';$('kpiDeltaRate').textContent=$('deltaRate').textContent;$('newSupply').textContent=(ch.newSupply||[]).length.toLocaleString();$('stopSupply').textContent=(ch.stoppedSupply||[]).length.toLocaleString();$('changeX2O').textContent=(ch.xToO||[]).length.toLocaleString();renderRisk(rr);renderAction(rr);}
-function renderRisk(rr){
-  $('riskTotal').textContent=`X 거래처 ${rr.length.toLocaleString()}처`;
-  $('riskBody').innerHTML=rr.slice(0,riskLimit).map((r,i)=>`<tr><td>${i+1}</td><td><span class="priority ${r.priority.toLowerCase()}">${r.priority}</span></td><td>${esc(r.outlet)}</td><td>${esc(r.businessName)}</td><td>${esc(r.businessNo)}</td><td>${E.map(e=>L.normStatus(r.statuses?.[e])||'-').join(' / ')}</td><td>${r.streak}개월</td><td><b>${r.score}</b></td></tr>`).join('')||'<tr><td colspan="8" class="empty">X가 있는 거래처가 없습니다.</td></tr>';
-  if($('riskShown'))$('riskShown').textContent=`${Math.min(riskLimit,rr.length).toLocaleString()} / ${rr.length.toLocaleString()}처 표시`;
-  if($('riskMore'))$('riskMore').hidden=rr.length<=riskLimit;
+function render(){const cur=$('month')?.value;if(!cur)return renderEmpty();const prev=prevMonth(cur),curr=scope(cur),prior=prev?scope(prev):[],s=L.summarize(curr),ps=L.summarize(prior),ch=L.compare(prior,curr),rr=risks(cur,curr,prior,ch);$('scopeLabel').textContent=`${partner} · ${$('outlet').value} · ${monthLabel(cur)}`;$('rate').textContent=pct(s.rate);$('rate').closest('.kpi').querySelector('small').textContent=`O ${s.O.toLocaleString()}건 / O+X ${s.evaluated.toLocaleString()}건`;$('xCount').textContent=s.X.toLocaleString();$('needCount').textContent=s.needAbsolute.toLocaleString();$('supplyCount').textContent=s.suppliedAbsolute.toLocaleString();$('x2o').textContent=(ch.xToO||[]).length.toLocaleString();$('o2x').textContent=(ch.oToX||[]).length.toLocaleString();if($('targetNeed'))$('targetNeed').textContent=`${s.evaluated?Math.ceil(Math.max(0,TARGET*s.evaluated-s.O)):0}건`;renderPersist(cur,curr);$('entityCards').innerHTML=E.map(e=>{const x=s.byEntity[e];return `<div class="entity"><h3>${e}</h3><div class="rate">${pct(x.rate)}</div><div class="meter"><i style="width:${x.rate==null?0:x.rate*100}%"></i></div><small>O ${x.O.toLocaleString()} · X ${x.X.toLocaleString()} · 평가 ${(x.O+x.X).toLocaleString()}</small></div>`}).join('');$('changeSub').textContent=prev?`${monthLabel(prev)} → ${monthLabel(cur)}`:'비교할 이전 월이 없습니다.';$('deltaRate').textContent=prev&&s.rate!=null&&ps.rate!=null?pp(s.rate-ps.rate):'—';$('kpiDeltaRate').textContent=$('deltaRate').textContent;$('newSupply').textContent=(ch.newSupply||[]).length.toLocaleString();$('stopSupply').textContent=(ch.stoppedSupply||[]).length.toLocaleString();$('changeX2O').textContent=(ch.xToO||[]).length.toLocaleString();actionContext=buildActionContext(cur,curr,prior,ch,rr);renderAction();}
+const ACTION_VIEWS={
+  x:'미연동 X 거래처',
+  persist:'2개월 이상 지속 X',
+  all3:'3개사 모두 X',
+  improved:'X→O 개선 거래처',
+  worsened:'O→X 악화 거래처',
+  compared:'전월 비교 가능 거래처',
+  evaluated:'전체 O/X 평가 거래처',
+  supplied:'도도매 공급처 (O 또는 X)'
+};
+const KPI_VIEWS={rate:'evaluated',delta:'compared',unlinked:'x',need:'x',persist:'persist',all3:'all3',improved:'improved',worsened:'worsened',supply:'supplied'};
+function evaluated(r,entity='all'){
+  return (entity==='all'?E:[entity]).some(e=>L.normStatus(r.statuses?.[e])!==null);
+}
+function hasCurrentX(r,entity='all'){
+  return (entity==='all'?E:[entity]).some(e=>L.normStatus(r.statuses?.[e])==='X');
+}
+function buildActionContext(cur,curr,prior,ch,rr){
+  const riskByKey=new Map(rr.map(r=>[key(r),r]));
+  const streakByKey=new Map(streakRows(cur,curr).map(r=>[key(r),r]));
+  const prevByKey=new Map(prior.map(r=>[key(r),r]));
+  const improved=new Map(),worsened=new Map();
+  for(const [dest,items] of [[improved,ch.xToO||[]],[worsened,ch.oToX||[]]]){
+    items.forEach(item=>{
+      const k=key(item);if(!dest.has(k))dest.set(k,new Set());
+      dest.get(k).add(item.entity);
+    });
+  }
+  const byKey=new Map();
+  curr.forEach(r=>{
+    const k=key(r),x=riskByKey.get(k),st=streakByKey.get(k);
+    const a=x||{...r,score:0,xCount:0,priority:'P3',streak:st?.streak||0,entityStreak:st?.entityStreak||{}};
+    byKey.set(k,a);
+  });
+  return {rows:[...byKey.values()].sort((a,b)=>b.score-a.score||b.xCount-a.xCount||
+    String(a.businessName).localeCompare(String(b.businessName),'ko')),
+    prevByKey,improved,worsened,month:cur};
+}
+function filterActionRows(ctx,view='x',entity='all',search=''){
+  if(!ctx)return [];
+  const scopeEntities=entity==='all'?E:[entity];
+  const q=String(search||'').trim().toLocaleLowerCase('ko');
+  return ctx.rows.filter(r=>{
+    const k=key(r),statuses=r.statuses||{},prior=ctx.prevByKey.get(k);
+    let include=false;
+    switch(view){
+      case 'x':include=scopeEntities.some(e=>L.normStatus(statuses[e])==='X');break;
+      case 'persist':include=scopeEntities.some(e=>L.normStatus(statuses[e])==='X'&&(r.entityStreak?.[e]||0)>=2);break;
+      case 'all3':include=E.every(e=>L.normStatus(statuses[e])==='X');break;
+      case 'improved':include=scopeEntities.some(e=>ctx.improved.get(k)?.has(e));break;
+      case 'worsened':include=scopeEntities.some(e=>ctx.worsened.get(k)?.has(e));break;
+      case 'compared':include=scopeEntities.some(e=>L.normStatus(statuses[e])&&L.normStatus(prior?.statuses?.[e]));break;
+      case 'supplied':
+      case 'evaluated':include=scopeEntities.some(e=>L.normStatus(statuses[e]));break;
+      default:include=false;
+    }
+    if(!include)return false;
+    if(!q)return true;
+    return [r.businessName,r.businessNo,r.outlet,r.manager].some(x=>String(x||'').toLocaleLowerCase('ko').includes(q));
+  });
+}
+function setActionView(view,{scroll=true,kpi=null}={}){
+  activeKpi=kpi;
+  actionView=Object.prototype.hasOwnProperty.call(ACTION_VIEWS,view)?view:'x';
+  actionEntity='all';actionSearch='';actionLimit=30;
+  if($('actionView'))$('actionView').value=actionView;
+  if($('actionEntity'))$('actionEntity').value='all';
+  if($('actionSearch'))$('actionSearch').value='';
+  renderAction();
+  if(scroll)document.getElementById('action')?.scrollIntoView({behavior:'smooth',block:'start'});
+}
+function updateKpiSelection(){
+  document.querySelectorAll('.kpi[data-kpi]').forEach(card=>{
+    const chosen=card.dataset.kpi===activeKpi;
+    card.classList.toggle('kpi-selected',chosen);
+    card.setAttribute('aria-pressed',chosen?'true':'false');
+  });
 }
 function dualValue(a,field){
   const m=a.masterAction||a,own=a.partnerAction||{};
@@ -170,11 +242,14 @@ function dualValue(a,field){
     field==='status'?value?statusLabel(value):'—':value||'—';
   return {master,partnerValue,edited,masterLabel:show(master)};
 }
-function actionFieldCell(a,k,field){
+function actionFieldCell(a,k,field,canEdit=true){
   const v=dualValue(a,field),value=esc(v.partnerValue),keyAttr=esc(k),wip=actionOverrides[k]?.fields?.[field]!==undefined;
   const cls='action-field'+(wip?' pending':'');
   let input='';
-  if(field==='reasonCode'){
+  if(!canEdit){const raw=field==='reasonCode'?(v.partnerValue?esc(v.partnerValue+' '+(reasons[v.partnerValue]||'')):'미입력'):
+    field==='status'?(v.partnerValue?esc(statusLabel(v.partnerValue)):'미입력'):esc(v.partnerValue||'미입력');
+    input='<span class="readonly-action" title="현재 X가 없는 신규 거래처는 조회 전용입니다.">'+raw+'</span>';
+  }else if(field==='reasonCode'){
     const opts=Object.entries(reasons).map(([c,label])=>`<option value="${esc(c)}" ${v.partnerValue===c?'selected':''}>${esc(c)} ${esc(label)}</option>`).join('');
     input=`<select class="${cls}" data-field="${field}" data-key="${keyAttr}"><option value="" ${!v.partnerValue?'selected':''}>업체 미입력</option>${opts}</select>`;
   }else if(field==='status'){
@@ -186,15 +261,39 @@ function actionFieldCell(a,k,field){
   }
   return `<td class="dual-action-cell"><div class="dual-master"><b>마스터</b><span title="${esc(v.masterLabel)}">${esc(v.masterLabel)}</span></div><div class="dual-partner"><b>업체</b>${input}</div>${wip?'<small class="pending-indicator">서버 전송 대기</small>':''}</td>`;
 }
-function renderAction(rr){
-  $('actionBody').innerHTML=rr.slice(0,actionLimit).map(r=>{
-    const a=actionFor(r),k=key(r),pa=a.partnerAction||{},hasPartner=(pa.editedFields||[]).length>0;
-    const display=hasPartner?'<small class="local-action-marker">업체 입력 있음</small>':'';
-    return `<tr><td><span class="priority ${r.priority.toLowerCase()}">${r.priority}</span></td><td>${r.score}</td><td>${esc(r.businessName)}${display}</td><td>${esc(r.outlet)}</td><td>${r.streak}개월</td>${EDIT_FIELDS.map(f=>actionFieldCell(a,k,f)).join('')}</tr>`;
-  }).join('')||'<tr><td colspan="9" class="empty">Action 대상이 없습니다.</td></tr>';
-  document.querySelectorAll('#actionBody [data-field]').forEach(el=>el.addEventListener('change',()=>savePartnerOverride(el.dataset.key,el.dataset.field,el.value)));
-  if($('actionShown'))$('actionShown').textContent=`${Math.min(actionLimit,rr.length).toLocaleString()} / ${rr.length.toLocaleString()}처 표시`;
+function renderAction(){
+  const rr=filterActionRows(actionContext,actionView,actionEntity,actionSearch);
+  const visible=rr.slice(0,actionLimit),body=$('actionBody');
+  if(!body)return;
+  body.innerHTML=visible.map(r=>{
+    const a=actionFor(r),k=key(r),pa=a.partnerAction||{},
+      hasPartner=(pa.editedFields||[]).length>0,hasX=hasCurrentX(r),
+      canEdit=hasX||actionIndex.has(k),
+      display=hasPartner?'<small class="local-action-marker">업체 입력 있음</small>':'';
+    const status=e=>{
+      const st=L.normStatus(r.statuses?.[e]),label=st||'—';
+      return '<td class="status-cell"><span class="status-pill status-'+(st||'na').toLowerCase()+'" title="'+esc(e)+' '+(st==='O'?'연동':st==='X'?'미연동':'미평가')+'">'+label+'</span></td>';
+    };
+    const name='<strong>'+esc(r.businessName)+'</strong><small class="business-number">'+esc(r.businessNo)+'</small>'+display;
+    const changeSet=actionContext?.improved.get(k)||actionContext?.worsened.get(k);
+    const trend=changeSet?.size?'<small class="action-trend">전월 대비 상태 변경</small>':'';
+    return '<tr class="'+(hasX?'':'not-x-row')+'">'+
+      '<td class="key-col priority-col"><span class="priority '+r.priority.toLowerCase()+'">'+r.priority+'</span></td>'+
+      '<td class="key-col name-col">'+name+trend+'</td>'+
+      '<td>'+esc(r.outlet)+'</td>'+
+      E.map(status).join('')+
+      '<td>'+r.streak+'개월</td><td class="score-col">'+(hasX?'<b>'+r.score+'</b>':'—')+'</td>'+
+      EDIT_FIELDS.map(f=>actionFieldCell(a,k,f,canEdit)).join('')+'</tr>';
+  }).join('')||'<tr><td colspan="12" class="empty">조건에 해당하는 거래처가 없습니다. 필터나 검색어를 변경해 주세요.</td></tr>';
+  const assessed=rr.reduce((sum,r)=>sum+E.filter(e=>L.normStatus(r.statuses?.[e])).length,0),
+        xs=rr.reduce((sum,r)=>sum+E.filter(e=>L.normStatus(r.statuses?.[e])==='X').length,0);
+  if($('actionFilterCount'))$('actionFilterCount').textContent=
+    rr.length.toLocaleString()+'처 · O '+(assessed-xs).toLocaleString()+'건 / X '+xs.toLocaleString()+'건 (법인별 평가)';
+  if($('actionViewTitle'))$('actionViewTitle').textContent=ACTION_VIEWS[actionView];
+  if($('actionShown'))$('actionShown').textContent=
+    Math.min(actionLimit,rr.length).toLocaleString()+' / '+rr.length.toLocaleString()+'처 표시';
   if($('actionMore'))$('actionMore').hidden=rr.length<=actionLimit;
+  updateKpiSelection();
 }
 function applyShared(json){
   if(json.reasons&&typeof json.reasons==='object'&&!Array.isArray(json.reasons)){
@@ -215,7 +314,7 @@ async function pullSharedActions(force=false){
   try{
     const json=await request({type:'partnerActions',partner,password});offlineServer=false;
     const old=JSON.stringify(remoteActions);applyShared(json);
-    if(JSON.stringify(remoteActions)!==old)render();
+    if(JSON.stringify(remoteActions)!==old)renderAction();
     setActionStatus('마스터·업체 Action 동기화 완료 · 미전송 내용 유지');updateSaveButton();
   }catch(e){if(e.status===404)offlineServer=true;setActionStatus('공용 Action 조회 실패 · '+e.message,true);}
 }
@@ -224,7 +323,7 @@ function startActionPolling(){
   actionPoll=setInterval(()=>pullSharedActions(false),60000);
   dataPoll=setInterval(()=>{if(document.visibilityState==='visible'&&Date.now()-lastEditAt>10000&&!document.activeElement?.closest?.('#actionBody'))pull();},180000);
 }
-function renderEmpty(){['rate','kpiDeltaRate','xCount','needCount','supplyCount','x2o','o2x','targetNeed','deltaRate','newSupply','stopSupply','changeX2O'].forEach(id=>{if($(id))$(id).textContent='-';});['persistAbs','persistState','all3Abs','all3State'].forEach(id=>{if($(id))$(id).textContent='-';});$('riskTotal').textContent='X 거래처 0처';$('riskBody').innerHTML='<tr><td colspan="8" class="empty">표시할 데이터가 없습니다.</td></tr>';$('actionBody').innerHTML='<tr><td colspan="9" class="empty">표시할 데이터가 없습니다.</td></tr>';$('entityCards').innerHTML=E.map(e=>`<div class="entity"><h3>${e}</h3><div class="rate">-</div></div>`).join('');}
+function renderEmpty(){['rate','kpiDeltaRate','xCount','needCount','supplyCount','x2o','o2x','targetNeed','deltaRate','newSupply','stopSupply','changeX2O'].forEach(id=>{if($(id))$(id).textContent='-';});['persistAbs','persistState','all3Abs','all3State'].forEach(id=>{if($(id))$(id).textContent='-';});actionContext=null;$('actionBody').innerHTML='<tr><td colspan="12" class="empty">표시할 데이터가 없습니다.</td></tr>';if($('actionFilterCount'))$('actionFilterCount').textContent='0처';$('entityCards').innerHTML=E.map(e=>`<div class="entity"><h3>${e}</h3><div class="rate">-</div></div>`).join('');}
 async function request(payload){
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),18000);
  try{
@@ -294,8 +393,59 @@ async function login(){
  }catch(err){$('loginError').textContent=err.message||'로그인에 실패했습니다.';}
  finally{loginInProgress=false;$('loginBtn').disabled=false;$('loginBtn').textContent='접속하기';}
 }
-function logout(clear=true){clearInterval(actionPoll);clearInterval(dataPoll);partner='';password='';data=[];actions=[];remoteActions=[];actionIndex.clear();actionOverrides={};historyCache.clear();offlineServer=false;updateSaveButton();if(clear){sessionStorage.removeItem(SESSION_PARTNER);sessionStorage.removeItem(SESSION_PASSWORD);}$('partnerName').textContent='-';$('partnerLogin').classList.remove('hidden-login');$('loginPassword').value='';renderEmpty();}
-async function exportActions(){const cur=$('month')?.value;if(!cur)return;try{await ensureXLSX();}catch(e){alert(e.message||e);return;}const prev=prevMonth(cur),curr=scope(cur),prior=prev?scope(prev):[],rr=risks(cur,curr,prior,L.compare(prior,curr));const rows=rr.map(r=>{const a=actionFor(r),c=a.reasonCode||'',m=a.masterAction||a,p=a.partnerAction||{},owned=new Set(p.editedFields||[]),pv=f=>owned.has(f)?String(p[f]??''):'';return {'파트너사':partner,'기준월':cur,'업체/권역':r.outlet,'실사업자번호':r.businessNo,'실사업자명':r.businessName,'Priority':r.priority,'Risk Score':r.score,'Aging':`${r.streak}개월`,'대웅제약':L.normStatus(r.statuses?.['대웅제약'])||'','대웅바이오':L.normStatus(r.statuses?.['대웅바이오'])||'','한올바이오':L.normStatus(r.statuses?.['한올바이오'])||'','원인코드':c,'원인':reasons[c]||'','조치계획':a.plan||'','Due':a.dueDate||'','상태':statusLabel(a.status||'TODO'),'마스터 원인코드':m.reasonCode||'','업체 원인코드':pv('reasonCode'),'마스터 조치계획':m.plan||'','업체 조치계획':pv('plan'),'마스터 Due':m.dueDate||'','업체 Due':pv('dueDate'),'마스터 상태':statusLabel(m.status||'TODO'),'업체 상태':pv('status')?statusLabel(pv('status')):'','업체 수정일시':p.updatedAt||''};});const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),'Action Board');XLSX.writeFile(wb,`DCM_ActionBoard_${partner}_${cur}.xlsx`);}
-function start(){$('outlet').addEventListener('change',()=>{riskLimit=60;actionLimit=30;render();});$('month').addEventListener('change',()=>{riskLimit=60;actionLimit=30;render();});$('actionMore')?.addEventListener('click',()=>{actionLimit+=50;render();});$('riskMore')?.addEventListener('click',()=>{riskLimit+=100;render();});$('refreshBtn').onclick=()=>{offlineServer=false;void pull();};$('saveToMasterBtn')?.addEventListener('click',savePendingActions);$('exportAction').onclick=exportActions;$('exportAction2').onclick=exportActions;$('resetActionBtn').onclick=()=>{if(!partner)return;if(confirm(`${partner}의 아직 서버로 전송하지 못한 로컬 입력을 삭제할까요? (서버에 저장된 업체 입력은 유지됩니다.)`)){localStorage.setItem(overrideKey(),'{}');localStorage.removeItem(actionKey());actionOverrides={};rebuildActions();render();setActionStatus('미전송 로컬 내용 삭제 · 서버 저장 내용 유지');}};$('logoutBtn').onclick=()=>logout(true);$('loginBtn').onclick=login;$('loginPassword').addEventListener('keydown',e=>{if(e.key==='Enter')login();});document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')pullSharedActions();});window.addEventListener('storage',e=>{if(partner&&e.key===overrideKey()){actionOverrides=loadOverrides();rebuildActions();render();}});document.querySelectorAll('[data-jump]').forEach(b=>b.onclick=()=>document.getElementById(b.dataset.jump)?.scrollIntoView({behavior:'smooth'}));const sp=sessionStorage.getItem(SESSION_PARTNER)||'',sw=sessionStorage.getItem(SESSION_PASSWORD)||'';if(sp&&sw){partner=sp;password=sw;$('partnerName').textContent=partner;$('partnerLogin').classList.add('hidden-login');loadCachedData();void pull();}}
+function logout(clear=true){clearInterval(actionPoll);clearInterval(dataPoll);partner='';password='';data=[];actions=[];remoteActions=[];actionIndex.clear();actionOverrides={};historyCache.clear();actionContext=null;actionView='x';actionEntity='all';actionSearch='';activeKpi=null;actionLimit=30;offlineServer=false;updateSaveButton();if($('actionView'))$('actionView').value='x';if($('actionEntity'))$('actionEntity').value='all';if($('actionSearch'))$('actionSearch').value='';if(clear){sessionStorage.removeItem(SESSION_PARTNER);sessionStorage.removeItem(SESSION_PASSWORD);}$('partnerName').textContent='-';$('partnerLogin').classList.remove('hidden-login');$('loginPassword').value='';renderEmpty();}
+async function exportActions(){const cur=$('month')?.value;if(!cur)return;try{await ensureXLSX();}catch(e){alert(e.message||e);return;}const prev=prevMonth(cur),curr=scope(cur),prior=prev?scope(prev):[],ch=L.compare(prior,curr),ctx=actionContext?.month===cur?actionContext:buildActionContext(cur,curr,prior,ch,risks(cur,curr,prior,ch)),rr=filterActionRows(ctx,actionView,actionEntity,actionSearch);const rows=rr.map(r=>{const a=actionFor(r),c=a.reasonCode||'',m=a.masterAction||a,p=a.partnerAction||{},owned=new Set(p.editedFields||[]),pv=f=>owned.has(f)?String(p[f]??''):'';return {'파트너사':partner,'기준월':cur,'업체/권역':r.outlet,'실사업자번호':r.businessNo,'실사업자명':r.businessName,'Priority':r.priority,'Risk Score':r.score,'Aging':`${r.streak}개월`,'대웅제약':L.normStatus(r.statuses?.['대웅제약'])||'','대웅바이오':L.normStatus(r.statuses?.['대웅바이오'])||'','한올바이오':L.normStatus(r.statuses?.['한올바이오'])||'','원인코드':c,'원인':reasons[c]||'','조치계획':a.plan||'','Due':a.dueDate||'','상태':statusLabel(a.status||'TODO'),'마스터 원인코드':m.reasonCode||'','업체 원인코드':pv('reasonCode'),'마스터 조치계획':m.plan||'','업체 조치계획':pv('plan'),'마스터 Due':m.dueDate||'','업체 Due':pv('dueDate'),'마스터 상태':statusLabel(m.status||'TODO'),'업체 상태':pv('status')?statusLabel(pv('status')):'','업체 수정일시':p.updatedAt||''};});const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),'Action Board');XLSX.writeFile(wb,`DCM_ActionBoard_${partner}_${cur}_${actionView}.xlsx`);}
+function start(){
+  const resetContext=()=>{actionLimit=30;render();};
+  $('outlet').addEventListener('change',resetContext);
+  $('month').addEventListener('change',resetContext);
+  $('actionView').addEventListener('change',ev=>{actionView=ev.target.value;activeKpi=null;actionLimit=30;renderAction();});
+  $('actionEntity').addEventListener('change',ev=>{actionEntity=ev.target.value;activeKpi=null;actionLimit=30;renderAction();});
+  $('actionSearch').addEventListener('input',ev=>{actionSearch=ev.target.value;activeKpi=null;actionLimit=30;renderAction();});
+  $('actionFilterReset').addEventListener('click',()=>setActionView('x',{scroll:false}));
+  $('actionMore').addEventListener('click',()=>{actionLimit+=50;renderAction();});
+  $('actionBody').addEventListener('change',event=>{
+    const el=event.target.closest('[data-field]');
+    if(!el)return;
+    savePartnerOverride(el.dataset.key,el.dataset.field,el.value);
+    el.classList.add('pending');
+  });
+  document.querySelectorAll('.kpi[data-kpi]').forEach(card=>{
+    card.setAttribute('role','button');card.setAttribute('tabindex','0');card.setAttribute('aria-controls','action');
+    card.setAttribute('title','클릭하면 '+(ACTION_VIEWS[KPI_VIEWS[card.dataset.kpi]]||'해당')+' 목록으로 이동');
+    const activate=()=>setActionView(KPI_VIEWS[card.dataset.kpi],{kpi:card.dataset.kpi});
+    card.addEventListener('click',activate);
+    card.addEventListener('keydown',ev=>{
+      if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();activate();}
+    });
+  });
+  $('refreshBtn').onclick=()=>{offlineServer=false;void pull();};
+  $('saveToMasterBtn')?.addEventListener('click',savePendingActions);
+  $('exportAction').onclick=exportActions;
+  $('exportAction2').onclick=exportActions;
+  $('resetActionBtn').onclick=()=>{
+    if(!partner)return;
+    if(confirm(`${partner}의 아직 서버로 전송하지 못한 로컬 입력을 삭제할까요? (서버에 저장된 업체 입력은 유지됩니다.)`)){
+      localStorage.setItem(overrideKey(),'{}');localStorage.removeItem(actionKey());
+      actionOverrides={};rebuildActions();render();
+      setActionStatus('미전송 로컬 내용 삭제 · 서버 저장 내용 유지');
+    }
+  };
+  $('logoutBtn').onclick=()=>logout(true);
+  $('loginBtn').onclick=login;
+  $('loginPassword').addEventListener('keydown',ev=>{if(ev.key==='Enter')login();});
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')pullSharedActions();});
+  window.addEventListener('storage',ev=>{
+    if(partner&&ev.key===overrideKey()){actionOverrides=loadOverrides();rebuildActions();renderAction();}
+  });
+  document.querySelectorAll('[data-jump]').forEach(b=>b.onclick=()=>{
+    document.getElementById(b.dataset.jump)?.scrollIntoView({behavior:'smooth'});
+  });
+  const sp=sessionStorage.getItem(SESSION_PARTNER)||'',sw=sessionStorage.getItem(SESSION_PASSWORD)||'';
+  if(sp&&sw){
+    partner=sp;password=sw;$('partnerName').textContent=partner;
+    $('partnerLogin').classList.add('hidden-login');loadCachedData();void pull();
+  }
+}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();
