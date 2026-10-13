@@ -116,7 +116,7 @@ async function savePendingActions(){
  }catch(err){
   setActionStatus(`서버 전달 실패 (${completed}/${changes.length}건 성공) · 미전송 내용 보관 · ${err.message}`,true);
   console.warn('[DCM] save batch failed',err);
- }finally{savingBatch=false;updateSaveButton();if(partner===company)render();}
+ }finally{savingBatch=false;updateSaveButton();if(partner===company)renderAction();}
 }
 function retryPendingUploads(){updateSaveButton();}
 function savePartnerOverride(k,field,value){
@@ -275,7 +275,7 @@ function renderAction(){
       return '<td class="status-cell"><span class="status-pill status-'+(st||'na').toLowerCase()+'" title="'+esc(e)+' '+(st==='O'?'연동':st==='X'?'미연동':'미평가')+'">'+label+'</span></td>';
     };
     const name='<strong>'+esc(r.businessName)+'</strong><small class="business-number">'+esc(r.businessNo)+'</small>'+display;
-    const prior=actionContext?.prevByKey.get(k),changeSet=actionContext?.improved.get(k)||actionContext?.worsened.get(k);
+    const changeSet=actionContext?.improved.get(k)||actionContext?.worsened.get(k);
     const trend=changeSet?.size?'<small class="action-trend">전월 대비 상태 변경</small>':'';
     return '<tr class="'+(hasX?'':'not-x-row')+'">'+
       '<td class="key-col priority-col"><span class="priority '+r.priority.toLowerCase()+'">'+r.priority+'</span></td>'+
@@ -314,7 +314,7 @@ async function pullSharedActions(force=false){
   try{
     const json=await request({type:'partnerActions',partner,password});offlineServer=false;
     const old=JSON.stringify(remoteActions);applyShared(json);
-    if(JSON.stringify(remoteActions)!==old)render();
+    if(JSON.stringify(remoteActions)!==old)renderAction();
     setActionStatus('마스터·업체 Action 동기화 완료 · 미전송 내용 유지');updateSaveButton();
   }catch(e){if(e.status===404)offlineServer=true;setActionStatus('공용 Action 조회 실패 · '+e.message,true);}
 }
@@ -393,7 +393,7 @@ async function login(){
  }catch(err){$('loginError').textContent=err.message||'로그인에 실패했습니다.';}
  finally{loginInProgress=false;$('loginBtn').disabled=false;$('loginBtn').textContent='접속하기';}
 }
-function logout(clear=true){clearInterval(actionPoll);clearInterval(dataPoll);partner='';password='';data=[];actions=[];remoteActions=[];actionIndex.clear();actionOverrides={};historyCache.clear();offlineServer=false;updateSaveButton();if(clear){sessionStorage.removeItem(SESSION_PARTNER);sessionStorage.removeItem(SESSION_PASSWORD);}$('partnerName').textContent='-';$('partnerLogin').classList.remove('hidden-login');$('loginPassword').value='';renderEmpty();}
+function logout(clear=true){clearInterval(actionPoll);clearInterval(dataPoll);partner='';password='';data=[];actions=[];remoteActions=[];actionIndex.clear();actionOverrides={};historyCache.clear();actionContext=null;actionView='x';actionEntity='all';actionSearch='';activeKpi=null;actionLimit=30;offlineServer=false;updateSaveButton();if($('actionView'))$('actionView').value='x';if($('actionEntity'))$('actionEntity').value='all';if($('actionSearch'))$('actionSearch').value='';if(clear){sessionStorage.removeItem(SESSION_PARTNER);sessionStorage.removeItem(SESSION_PASSWORD);}$('partnerName').textContent='-';$('partnerLogin').classList.remove('hidden-login');$('loginPassword').value='';renderEmpty();}
 async function exportActions(){const cur=$('month')?.value;if(!cur)return;try{await ensureXLSX();}catch(e){alert(e.message||e);return;}const prev=prevMonth(cur),curr=scope(cur),prior=prev?scope(prev):[],ch=L.compare(prior,curr),ctx=actionContext?.month===cur?actionContext:buildActionContext(cur,curr,prior,ch,risks(cur,curr,prior,ch)),rr=filterActionRows(ctx,actionView,actionEntity,actionSearch);const rows=rr.map(r=>{const a=actionFor(r),c=a.reasonCode||'',m=a.masterAction||a,p=a.partnerAction||{},owned=new Set(p.editedFields||[]),pv=f=>owned.has(f)?String(p[f]??''):'';return {'파트너사':partner,'기준월':cur,'업체/권역':r.outlet,'실사업자번호':r.businessNo,'실사업자명':r.businessName,'Priority':r.priority,'Risk Score':r.score,'Aging':`${r.streak}개월`,'대웅제약':L.normStatus(r.statuses?.['대웅제약'])||'','대웅바이오':L.normStatus(r.statuses?.['대웅바이오'])||'','한올바이오':L.normStatus(r.statuses?.['한올바이오'])||'','원인코드':c,'원인':reasons[c]||'','조치계획':a.plan||'','Due':a.dueDate||'','상태':statusLabel(a.status||'TODO'),'마스터 원인코드':m.reasonCode||'','업체 원인코드':pv('reasonCode'),'마스터 조치계획':m.plan||'','업체 조치계획':pv('plan'),'마스터 Due':m.dueDate||'','업체 Due':pv('dueDate'),'마스터 상태':statusLabel(m.status||'TODO'),'업체 상태':pv('status')?statusLabel(pv('status')):'','업체 수정일시':p.updatedAt||''};});const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),'Action Board');XLSX.writeFile(wb,`DCM_ActionBoard_${partner}_${cur}_${actionView}.xlsx`);}
 function start(){
   const resetContext=()=>{actionLimit=30;render();};
