@@ -67,7 +67,7 @@ if(!partnerJs.includes("E.map(status).join('')")||!partnerJs.includes('aria-pres
 ok('duplicate X table removed, 3-company O/X visible, keyboard KPI cards');
 const hook="if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();";
 if(!partnerJs.includes(hook))fail('Partner test hook marker missing');
-const withTest=partnerJs.replace(hook,"window.__overrideTest={setPartner:p=>{partner=p},setPassword:p=>{password=p},setData:d=>{data=d;historyCache.clear()},mockRequest:f=>{request=f},disableRender:()=>{render=()=>{};pullSharedActions=async()=>{}},getPending:pendingChanges,savePendingActions,applyShared,savePartnerOverride,actionFor,risks,buildActionContext,filterActionRows,setActionView,getView:()=>actionView,reset:()=>{localStorage.setItem(overrideKey(),'{}');actionOverrides={};rebuildActions()}};"+hook);
+const withTest=partnerJs.replace(hook,"window.__overrideTest={setPartner:p=>{partner=p},setPassword:p=>{password=p},setData:d=>{data=d;historyCache.clear()},mockRequest:f=>{request=f},disableRender:()=>{render=()=>{};pullSharedActions=async()=>{}},getPending:pendingChanges,savePendingActions,applyShared,savePartnerOverride,actionFor,risks,buildActionContext,filterActionRows,setActionView,getView:()=>actionView,setActionContext:c=>{actionContext=c},renderAction,reset:()=>{localStorage.setItem(overrideKey(),'{}');actionOverrides={};rebuildActions()}};"+hook);
 const store=()=>{const m=new Map();return {getItem:k=>m.has(k)?m.get(k):null,setItem:(k,v)=>m.set(k,String(v)),removeItem:k=>m.delete(k)}};
 const ls=store(),sess=store();
 const sandbox={window:{DCMLogic:L},document:{readyState:'loading',addEventListener(){},getElementById(){return null}},localStorage:ls,sessionStorage:sess,console:{warn(){}}};
@@ -150,4 +150,23 @@ if(test.filterActionRows(duplicateContext,'evaluated').length!==4)fail('Duplicat
 test.setActionView('worsened',{scroll:false});
 if(test.getView()!=='worsened')fail('Card/select drilldown state did not update');
 ok('KPI drilldowns, company filters, search and deduplicated merchants');
+const uiElements=new Map();
+for(const id of ['actionBody','actionFilterCount','actionViewTitle','actionShown','actionMore']){
+  uiElements.set(id,{innerHTML:'',textContent:'',hidden:false});
+}
+sandbox.document.getElementById=id=>uiElements.get(id)||null;
+sandbox.document.querySelectorAll=()=>[];
+test.setActionContext(context);
+test.setActionView('evaluated',{scroll:false});
+const tableHtml=uiElements.get('actionBody').innerHTML;
+if(!tableHtml.includes('status-o')||!tableHtml.includes('status-x')||!tableHtml.includes('status-na'))
+  fail('Rendered Action rows do not show all O/X/unassessed status chips');
+if(!tableHtml.includes('readonly-action'))
+  fail('Current O-only merchants without saved Action must be read only');
+if(!tableHtml.includes('business-number')||!tableHtml.includes('dual-master')||!tableHtml.includes('dual-partner'))
+  fail('Merchant business ID or independent master/Partner inputs missing');
+if(!uiElements.get('actionFilterCount').textContent.includes('4처'))
+  fail('Action filtered results count does not show unique merchant total');
+ok('rendered 3-company O/X chips, master/Partner fields and read-only O-only rows');
+
 console.log('HARNESS_OK');
