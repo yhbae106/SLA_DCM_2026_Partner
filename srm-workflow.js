@@ -42,7 +42,7 @@ function history(){
  if(last&&!$('srmForm').dataset.dirty)['reason','erpVendor','contactTarget','nextAction','owner','dueDate','baselineMonth'].forEach(f=>{if(last[f]&&$('srm-'+f))$('srm-'+f).value=last[f];});
 }
 function open(k,e='대웅제약'){
- if(!k?.includes('|||'))return;selected=k;entity=E.includes(e)?e:E[0];
+ if(!k?.includes('|||'))return;const changedCase=selected!==k||entity!==e;selected=k;entity=E.includes(e)?e:E[0];if(changedCase)$('srmForm').dataset.requestId='';
  $('srmForm').reset();$('srmForm').dataset.dirty='';
  $('srmEntity').value=entity;$('srmTitle').textContent=(latest().get(k)?.businessName||k.split('|||')[1])+' · '+k.split('|||')[0];
  const ms=months(k);$('srm-baselineMonth').innerHTML='<option value="">기준월 선택</option>'+ms.map(m=>'<option>'+esc(m)+'</option>').join('');
