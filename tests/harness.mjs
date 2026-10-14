@@ -213,7 +213,7 @@ uiElements.get('month').value='2026-07';
 test.setActionContext(julyContext);
 test.setActionView('stopped',{scroll:false});
 const stopHtml=uiElements.get('actionBody').innerHTML;
-if(!stopHtml.includes('7월 공급 중단(관리분류)')||
+if(!stopHtml.includes('공급 중단(사후 관리 분류)')||
  !stopHtml.includes('04 거래처 연동 거부/미협조')||
  !stopHtml.includes('공급 중단')||
  !stopHtml.includes('2026-07-31')||
