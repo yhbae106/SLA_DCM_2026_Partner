@@ -6,11 +6,6 @@ const isPartner=()=>!!window.DCMPartnerSRM;
 const source=()=>isPartner()?window.DCMPartnerSRM?.rows()||[]:window.DCMActionSync?.srmRows()||[];
 const request=x=>isPartner()?window.DCMPartnerSRM?.request(x):window.DCMActionSync?.srmRequest(x);
 const actionRows=()=>isPartner()?window.DCMPartnerSRM?.actionRows?.()||[]:window.DCMActionSync?.srmActions?.()||[];
-function disagreed(){
- return actionRows().filter(a=>{const m=a.masterAction||a,p=a.partnerAction||{};
-   return !!(m.reasonCode&&p.reasonCode&&(p.editedFields||[]).includes('reasonCode')&&m.reasonCode!==p.reasonCode);
- });
-}
 let events=[],selected='',entity='대웅제약',filter='all',loading=false,ready=false;
 const labels={OPEN:'미확인',CHECKING:'원인 확인',ERP_WAIT:'ERP 협의',IN_PROGRESS:'진행 중',DONE:'조치 완료·검증 대기',VERIFIED:'X→O 검증 완료',REOPENED:'재확인 필요'};
 function draftKey(){return 'dcm-srm-draft::'+(isPartner()?window.DCMPartnerSRM?.name():'master')+'::'+selected+'::'+entity;}
@@ -19,8 +14,6 @@ function latest(){
  const k=r.outlet+'|||'+r.businessNo;if(!m.has(k)||r.month>=m.get(k).month)m.set(k,r);}
  return m;
 }
-function cases(){const m=new Map();events.forEach(e=>{const k=e.key+'|||'+e.entity;if(!m.has(k))m.set(k,{latest:e,history:[]});m.get(k).history.push(e);m.get(k).latest=e;});return [...m.values()];}
-function overdue(e){return e?.dueDate&&e.dueDate<new Date().toISOString().slice(0,10)&&!['DONE','VERIFIED'].includes(e.status);}
 function show(t,err=false){$('srmMsg').textContent=t;$('srmMsg').classList.toggle('srm-error',err);}
 function render(){
  const raw=source(),month=$('month')?.value||'',months=[...new Set(raw.map(r=>r.month).filter(Boolean))].sort();
