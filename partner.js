@@ -161,13 +161,12 @@ const ACTION_VIEWS={
   all3:'3개사 모두 X',
   improved:'X→O 개선 거래처',
   worsened:'O→X 악화 거래처',
-  compared:'전월 비교 가능 거래처',
   history:'월별 조치 이력',
-  stopped:'7월 공급 중단(관리분류)',
-  evaluated:'전체 O/X 평가 거래처',
+  new:'선택월 신규 도도매',
+  stopped:'선택월 중단 도도매',
   supplied:'도도매 공급처 (O 또는 X)'
 };
-const KPI_VIEWS={rate:'evaluated',delta:'compared',unlinked:'x',need:'x',persist:'persist',all3:'all3',improved:'improved',worsened:'worsened',supply:'supplied'};
+const KPI_VIEWS={rate:'supplied',unlinked:'x',need:'x',persist:'persist',all3:'all3',improved:'improved',worsened:'worsened',supply:'supplied'};
 function evaluated(r,entity='all'){
   return (entity==='all'?E:[entity]).some(e=>L.normStatus(r.statuses?.[e])!==null);
 }
@@ -180,6 +179,9 @@ function buildActionContext(cur,curr,prior,ch,rr){
   const streakByKey=new Map(streakRows(cur,curr).map(r=>[key(r),r]));
   const prevByKey=new Map(prior.map(r=>[key(r),r]));
   const improved=new Map(),worsened=new Map();
+  const newSupply=new Map(),stoppedSupply=new Map();
+  for(const [dest,items] of [[newSupply,ch.newSupply||[]],[stoppedSupply,ch.stoppedSupply||[]]])
+    for(const item of items)dest.set(key(item),new Set((item.entities||[]).map(x=>x.entity)));
   for(const [dest,items] of [[improved,ch.xToO||[]],[worsened,ch.oToX||[]]]){
     items.forEach(item=>{
       const k=key(item);if(!dest.has(k))dest.set(k,new Set());
@@ -203,9 +205,18 @@ function buildActionContext(cur,curr,prior,ch,rr){
       monthlyHistorical:true,historyType:entry.type||'X2O'
     });
   }
+  for(const item of ch.stoppedSupply||[]){
+    const k=key(item);
+    if(byKey.has(k))continue;
+    const old=prevByKey.get(k)||{};
+    if(($('outlet')?.value||'전체')!=='전체'&&$('outlet')?.value!==item.outlet)continue;
+    byKey.set(k,{...old,month:cur,outlet:item.outlet,businessNo:item.businessNo,
+      businessName:item.businessName||old.businessName||'',manager:item.manager||old.manager||'',
+      statuses:{},priority:'P3',score:0,xCount:0,streak:0,entityStreak:{},stoppedSupply:true});
+  }
   return {rows:[...byKey.values()].sort((a,b)=>b.score-a.score||b.xCount-a.xCount||
     String(a.businessName).localeCompare(String(b.businessName),'ko')),
-    prevByKey,improved,worsened,month:cur};
+    prevByKey,improved,worsened,newSupply,stoppedSupply,month:cur};
 }
 function filterActionRows(ctx,view='x',entity='all',search=''){
   if(!ctx)return [];
@@ -220,11 +231,10 @@ function filterActionRows(ctx,view='x',entity='all',search=''){
       case 'all3':include=E.every(e=>L.normStatus(statuses[e])==='X');break;
       case 'improved':include=scopeEntities.some(e=>ctx.improved.get(k)?.has(e));break;
       case 'worsened':include=scopeEntities.some(e=>ctx.worsened.get(k)?.has(e));break;
-      case 'compared':include=scopeEntities.some(e=>L.normStatus(statuses[e])&&L.normStatus(prior?.statuses?.[e]));break;
+      case 'new':include=scopeEntities.some(e=>ctx.newSupply?.get(k)?.has(e));break;
       case 'history':include=!!window.DCM_MONTHLY_ACTION_HISTORY?.get(ctx.month,k)?.entities.some(e=>scopeEntities.includes(e));break;
-      case 'stopped':include=window.DCM_MONTHLY_ACTION_HISTORY?.get(ctx.month,k)?.type==='SUPPLY_STOP'&&!!window.DCM_MONTHLY_ACTION_HISTORY?.get(ctx.month,k)?.entities.some(e=>scopeEntities.includes(e));break;
-      case 'supplied':
-      case 'evaluated':include=scopeEntities.some(e=>L.normStatus(statuses[e]));break;
+      case 'stopped':include=scopeEntities.some(e=>ctx.stoppedSupply?.get(k)?.has(e));break;
+      case 'supplied':include=scopeEntities.some(e=>L.normStatus(statuses[e]));break;
       default:include=false;
     }
     if(!include)return false;
