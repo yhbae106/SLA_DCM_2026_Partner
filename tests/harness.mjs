@@ -165,13 +165,13 @@ if(ids('x')!=='1,2')fail('X filter must include only currently unlinked merchant
 if(ids('persist')!=='2'||ids('all3')!=='2')fail('Persistent X / all-3-X filters failed');
 if(ids('improved')!=='1,3')fail('Improvement filter must include O-only now improved merchants');
 if(ids('worsened')!=='1')fail('O-to-X filter includes incorrect merchants');
-if(ids('evaluated')!=='1,2,3,4'||ids('supplied')!=='1,2,3,4')fail('Evaluated/supply drilldown omitted O-only merchants');
-if(ids('compared')!=='1,2,3,4')fail('Monthly comparable merchants not included');
+if(ids('supplied')!=='1,2,3,4')fail('Supply drilldown omitted O-only merchants');
+if(ids('new')!==''||ids('stopped')!=='')fail('Fixture should have no new or stopped merchants');
 if(ids('x','대웅제약')!=='2')fail('Company X selection did not narrow correctly');
 if(ids('worsened','대웅바이오')!=='1')fail('Company O-to-X selection failed');
-if(ids('evaluated','all','ImprovedOnly')!=='3'||ids('x','all','not-found')!=='')fail('Search filter malfunction');
+if(ids('supplied','all','ImprovedOnly')!=='3'||ids('x','all','not-found')!=='')fail('Search filter malfunction');
 const duplicateContext=test.buildActionContext('2026-09',[...cRows,cRows[0]],pRows,changeFixture,rrFixture);
-if(test.filterActionRows(duplicateContext,'evaluated').length!==4)fail('Duplicate same merchant surfaced twice');
+if(test.filterActionRows(duplicateContext,'supplied').length!==4)fail('Duplicate same merchant surfaced twice');
 test.setActionView('worsened',{scroll:false});
 if(test.getView()!=='worsened')fail('Card/select drilldown state did not update');
 ok('KPI drilldowns, company filters, search and deduplicated merchants');
@@ -183,7 +183,7 @@ uiElements.set('month',{value:'2026-09'});
 sandbox.document.getElementById=id=>uiElements.get(id)||null;
 sandbox.document.querySelectorAll=()=>[];
 test.setActionContext(context);
-test.setActionView('evaluated',{scroll:false});
+test.setActionView('supplied',{scroll:false});
 const tableHtml=uiElements.get('actionBody').innerHTML;
 if(!tableHtml.includes('월별 X→O 조치 이력')||
  !tableHtml.includes('ERP업체 소통하여 정상 연동 조치')||
