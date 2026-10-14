@@ -6,6 +6,8 @@
     <option value="improved">X→O 개선</option>
     <option value="worsened">O→X 악화</option>
     <option value="compared">전월 비교 가능</option>
+    <option value="history">월별 전체 조치 이력</option>
+<option value="stopped">7월 공급 중단(관리분류)</option>
     <option value="evaluated">전체 O/X 평가 거래처</option>
     <option value="supplied">도도매 공급처 (O 또는 X)</option>
   </select></label>
@@ -19,7 +21,7 @@
 <div class="action-list-meta"><div><strong id="actionViewTitle">미연동 X 거래처</strong><span id="actionFilterCount" aria-live="polite">조회 대기</span></div>
   <div class="status-legend"><span class="status-pill status-o">O</span> 연동 <span class="status-pill status-x">X</span> 미연동 <span class="status-pill status-na">—</span> 미평가</div>
 </div>
-<details class="risk-guide"><summary>Priority · Risk Score 산정 기준</summary><p>현재 X +2 · 2개월째부터 월당 +3(최대 3회) · O→X +4 · 전월 미평가/신규→X +2. 평가건수와 거래처 수는 서로 다를 수 있습니다.</p></details><div class="table-wrap"><table><thead><tr><th class="key-col priority-col">Priority</th><th class="key-col name-col">거래처명 / 사업자번호</th><th>업체·권역</th><th>대웅제약</th><th>대웅바이오</th><th>한올바이오</th><th>Aging</th><th>Score</th><th>원인</th><th>조치계획</th><th>Due</th><th>상태</th></tr></thead><tbody id="actionBody"><tr><td colspan="12" class="empty">로그인 후 데이터를 불러옵니다.</td></tr></tbody></table></div><div class="partner-pagination"><span id="actionShown"></span><button class="btn" type="button" id="actionMore" hidden>거래처 50건 더 보기</button></div></section><footer>파트너 공유용 DCM 현황 · 대웅제약 마스터 등록 데이터 자동 동기화 · 타 업체 데이터는 서버에서 제외 · 마스터 Action 및 업체 Action 분리 저장 · 저장(마스터에게 전달)을 누르면 업체 입력은 Google Sheet N:T에 별도 기록</footer></main><script src="logic.js?v=20261002h1"></script><script src="partner.js?v=20261013u1"></script><script src="login-memory.js?v=20261002h1"></script><script>
+<details class="risk-guide"><summary>Priority · Risk Score 산정 기준</summary><p>현재 X +2 · 2개월째부터 월당 +3(최대 3회) · O→X +4 · 전월 미평가/신규→X +2. 평가건수와 거래처 수는 서로 다를 수 있습니다.</p></details><div class="table-wrap"><table><thead><tr><th class="key-col priority-col">Priority</th><th class="key-col name-col">거래처명 / 사업자번호</th><th>업체·권역</th><th>대웅제약</th><th>대웅바이오</th><th>한올바이오</th><th>Aging</th><th>Score</th><th>원인</th><th>조치계획</th><th>Due</th><th>상태</th></tr></thead><tbody id="actionBody"><tr><td colspan="12" class="empty">로그인 후 데이터를 불러옵니다.</td></tr></tbody></table></div><div class="partner-pagination"><span id="actionShown"></span><button class="btn" type="button" id="actionMore" hidden>거래처 50건 더 보기</button></div></section><footer>파트너 공유용 DCM 현황 · 대웅제약 마스터 등록 데이터 자동 동기화 · 타 업체 데이터는 서버에서 제외 · 마스터 Action 및 업체 Action 분리 저장 · 저장(마스터에게 전달)을 누르면 업체 입력은 Google Sheet N:T에 별도 기록</footer></main><script src="logic.js?v=20261002h1"></script><script src="data/monthly-action-history.js?v=20261014m2"></script><script src="partner.js?v=20261014m2"></script><script src="login-memory.js?v=20261002h1"></script><script>
 (()=>{
   const params = new URLSearchParams(location.search);
   const partner = params.get('partner');
