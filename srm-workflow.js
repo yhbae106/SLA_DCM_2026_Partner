@@ -23,15 +23,26 @@ function cases(){const m=new Map();events.forEach(e=>{const k=e.key+'|||'+e.enti
 function overdue(e){return e?.dueDate&&e.dueDate<new Date().toISOString().slice(0,10)&&!['DONE','VERIFIED'].includes(e.status);}
 function show(t,err=false){$('srmMsg').textContent=t;$('srmMsg').classList.toggle('srm-error',err);}
 function render(){
- const cs=cases(),disputes=disagreed(),tot={srmOpen:0,srmErp:0,srmOverdue:0,srmDone:0,srmVerified:0},now=latest();
- if($('srmDisputes'))$('srmDisputes').textContent=disputes.length.toLocaleString();
- cs.forEach(c=>{const s=c.latest.status;if(s==='VERIFIED')tot.srmVerified++;else tot.srmOpen++;if(s==='ERP_WAIT')tot.srmErp++;if(s==='DONE')tot.srmDone++;if(overdue(c.latest))tot.srmOverdue++;});
- Object.entries(tot).forEach(([k,v])=>{if($(k))$(k).textContent=v.toLocaleString();});
- const list=filter==='dispute'?disputes.map(a=>{const key=a.key,cur=now.get(key),chosen=E.find(e=>cur?.statuses?.[e]==='X')||E[0];return {latest:{key,entity:chosen,businessNo:a.businessNo||key.split('|||')[1],outlet:a.outlet||key.split('|||')[0],status:'CHECKING',erpVendor:'',nextAction:'마스터·유통협력사 원인 판단 차이 확인',dueDate:''}};}):
- cs.filter(c=>{const s=c.latest.status;return filter==='all'||filter==='open'&&s!=='VERIFIED'||filter==='erp'&&s==='ERP_WAIT'||filter==='done'&&s==='DONE'||filter==='verified'&&s==='VERIFIED'||filter==='overdue'&&overdue(c.latest);}).reverse();
- $('srmCount').textContent=list.length+'건';
- $('srmBody').innerHTML=list.slice(0,90).map(c=>{const x=c.latest,r=now.get(x.key),st=r?.statuses?.[x.entity]||'—';
- return '<tr><td><button class="srm-link" data-srm-open="'+esc(x.key)+'" data-srm-entity="'+esc(x.entity)+'">'+esc(r?.businessName||x.businessNo)+'</button><small>'+esc(x.outlet)+'</small></td><td>'+esc(x.entity)+'</td><td><b class="srm-ox-'+String(st).toLowerCase()+'">'+esc(st)+'</b></td><td>'+esc(labels[x.status]||x.status)+'</td><td>'+esc(x.erpVendor||'—')+'</td><td>'+ (overdue(x)?'<span class="srm-late">'+esc(x.dueDate)+'</span>':esc(x.dueDate||'—'))+'</td><td>'+esc(x.nextAction||'—')+'</td></tr>';}).join('')||'<tr><td colspan="7">아직 등록된 협의·조치 이력이 없습니다.</td></tr>';
+ const raw=source(),month=$('month')?.value||'',months=[...new Set(raw.map(r=>r.month).filter(Boolean))].sort();
+ const archive=window.DCM_MONTHLY_ACTION_HISTORY;if(raw.length)archive?.refresh?.(raw);
+ const result=window.DCMSRMAggregate?.build({actions:actionRows(),history:archive?.forMonth?.(month)||[],
+   events,month,latestMonth:months[months.length-1]||month})||{stats:{},records:[]};
+ const stats=result.stats,records=result.records,loaded=raw.length>0;
+ const numbers={srmManaged:stats.total,srmMaster:stats.master,srmPartner:stats.partner,
+  srmOpen:stats.progress,srmErp:stats.erp,srmOverdue:stats.overdue,srmDone:stats.done,
+  srmVerified:stats.verified,srmDisputes:stats.dispute};
+ for(const [id,n] of Object.entries(numbers))if($(id))$(id).textContent=loaded?Number(n||0).toLocaleString():'—';
+ const match=r=>filter==='all'||filter==='open'&&!r.done||filter==='progress'&&r.progress||
+  filter==='erp'&&r.erpRelated||filter==='overdue'&&r.overdue||filter==='done'&&r.done||
+  filter==='verified'&&r.verified||filter==='dispute'&&r.dispute||filter==='stopped'&&r.stop;
+ const list=records.filter(match),now=latest();
+ if($('srmCount'))$('srmCount').textContent=loaded?month+' · '+list.length+'처 / 관리 '+records.length+'처':'DCM 데이터 불러오는 중';
+ $('srmBody').innerHTML=list.slice(0,100).map(r=>{
+   const row=now.get(r.key),ox=E.map(e=>row?.statuses?.[e]||'—').join(' / ');
+   const origin=r.source==='monthly'?'월별 사후 이력':r.source==='live'?'기존 Action':'SRM 협의';
+   return '<tr><td><button class="srm-link" data-srm-open="'+esc(r.key)+'" data-srm-entity="'+esc(r.entity||E[0])+'">'+esc(r.businessName||r.businessNo)+'</button><small>'+esc(r.outlet)+' · '+esc(r.businessNo)+'</small></td><td>'+esc(ox)+'</td><td>'+esc(origin)+(r.masterFilled?' · 마스터':'')+(r.partnerFilled?' · 업체':'')+'</td><td>'+esc(r.statusLabel)+'</td><td>'+esc(r.erpVendor||(r.erpRelated?'ERP 관련(업체 미확인)':'—'))+'</td><td>'+esc(r.dueDate||'—')+'</td><td>'+esc(r.nextAction||'—')+'</td></tr>';
+ }).join('')||'<tr><td colspan="7">'+(loaded?'조건에 해당하는 거래처가 없습니다.':'DCM 데이터 불러오는 중')+'</td></tr>';
+ if($('srmSourceNote'))$('srmSourceNote').textContent='월별 DCM 및 기존 Action 입력 기준 · 마스터 '+(stats.master||0)+'처 / 업체 '+(stats.partner||0)+'처 · 사후분류와 당시 수행 증빙은 구분';
 }
 async function refresh(){
  if(loading||!request)return;
