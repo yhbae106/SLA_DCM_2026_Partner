@@ -447,6 +447,6 @@ function start(){
     $('partnerLogin').classList.add('hidden-login');loadCachedData();void pull();
   }
 }
-window.DCMPartnerSRM={rows:()=>data,name:()=>partner,request:x=>{if(!partner||!password)throw Error('파트너 로그인 후 이용해 주세요.');return request({...x,partner,password});}};
+window.DCMPartnerSRM={rows:()=>data,actionRows:()=>actions,name:()=>partner,request:x=>{if(!partner||!password)throw Error('파트너 로그인 후 이용해 주세요.');return request({...x,partner,password});}};
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();
