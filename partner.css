@@ -72,21 +72,19 @@
 .risk-guide summary:before{content:'ⓘ ';font-weight:700}
 .risk-guide p{margin:6px 0;padding:8px 10px;background:#f5f8fc;border-radius:6px;line-height:1.5}
 #action .table-wrap{max-height:min(66vh,720px);overflow:auto;overscroll-behavior:contain;scrollbar-color:#c5d5e8 #f5f8fc}
-#action .table-wrap table{min-width:1640px;border-collapse:separate;border-spacing:0;table-layout:auto}
+#action .table-wrap table{min-width:1410px;border-collapse:separate;border-spacing:0;table-layout:auto}
 #action .table-wrap th{position:sticky;top:0;z-index:3;background:#edf2f9;white-space:nowrap;box-shadow:0 1px 0 #d7e2ef;font-size:10px}
 #action .table-wrap td{vertical-align:middle;font-size:10.5px;background:#fff}
 #action .table-wrap tr:hover td{background:#f8fbff}
 #action .table-wrap tr.not-x-row td{background:#fcfdff}
 #action .table-wrap .key-col{position:sticky;z-index:2;background:#fff}
 #action .table-wrap th.key-col{z-index:5;background:#edf2f9}
-#action .table-wrap .priority-col{left:0;min-width:79px;width:79px}
-#action .table-wrap .name-col{left:79px;min-width:196px;max-width:230px;width:205px;border-right:1px solid #dce6f1;box-shadow:2px 0 6px rgba(27,60,97,.04)}
+#action .table-wrap .name-col{left:0;min-width:196px;max-width:230px;width:205px;border-right:1px solid #dce6f1;box-shadow:2px 0 6px rgba(27,60,97,.04)}
 #action .table-wrap tr:hover .key-col{background:#f8fbff}
 #action .name-col strong{display:block;white-space:normal;overflow-wrap:anywhere;line-height:1.45;max-width:194px;color:#244269}
 #action .business-number{display:block;margin-top:3px;color:#8391a5;font-size:9px;font-variant-numeric:tabular-nums}
 #action .action-trend{display:block;color:#3874bd;font-size:9px;margin-top:4px}
 #action .status-cell{text-align:center;padding:8px 6px;min-width:65px}
-#action .score-col{text-align:right;font-variant-numeric:tabular-nums}
 #action .readonly-action{display:block;font-size:10px;color:#5c6a7a;padding:6px 3px;overflow-wrap:anywhere}
 #action .dual-action-cell{min-width:180px;max-width:255px;padding:7px 5px}
 #action .dual-master,#action .dual-partner{padding:7px;gap:4px}
@@ -94,7 +92,14 @@
 #action .dual-partner .action-field{max-width:235px}
 #action .local-action-marker{display:block;margin:4px 0 0;width:max-content}
 @media(max-width:1100px){.action-toolbar{grid-template-columns:repeat(2,minmax(0,1fr))}.action-toolbar .btn{align-self:end}.board-title-note{display:block;margin:4px 0 0}}
-@media(max-width:650px){.action-toolbar{grid-template-columns:1fr}.action-list-meta{align-items:flex-start}.wrap{padding:14px 12px}#action .table-wrap{max-height:70vh}#action .table-wrap .name-col{left:65px;min-width:170px;width:170px;max-width:170px}#action .table-wrap .priority-col{min-width:65px;width:65px}}
+@media(max-width:650px){.action-toolbar{grid-template-columns:1fr}.action-list-meta{align-items:flex-start}.wrap{padding:14px 12px}#action .table-wrap{max-height:70vh}#action .table-wrap .name-col{left:0;min-width:170px;width:170px;max-width:170px}#action .table-wrap .priority-col{min-width:65px;width:65px}}
 
 .monthly-action-marker{display:inline-block;padding:3px 6px;margin-top:4px;background:#eaf4ff;border:1px solid #c9dbf3;color:#215e9a;border-radius:6px;font-size:10px;font-weight:750}
 #actionBody .readonly-action{white-space:normal;overflow-wrap:anywhere;line-height:1.5;display:block}
+
+/* The merchant is the only sticky column after removing score/priority. */
+#action .table-wrap .name-col{left:0;min-width:218px;max-width:248px;width:228px;box-sizing:border-box}
+#action .dual-action-cell{vertical-align:top;min-width:195px;max-width:248px}
+#action .dual-action-cell input,#action .dual-action-cell select{width:100%;min-width:0;max-width:100%;box-sizing:border-box}
+#action .dual-master span,#action .readonly-action{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;white-space:normal;overflow-wrap:anywhere;line-height:1.5}
+@media(max-width:650px){#action .table-wrap .name-col{left:0;min-width:185px;width:185px;max-width:185px}}
