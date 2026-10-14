@@ -8,6 +8,16 @@ const read=p=>fs.readFileSync(path.join(root,p),'utf8'),exists=p=>fs.existsSync(
 const html=read('index.html');
 const workflow=read('srm-workflow.js');
 new Function(workflow);
+if(!workflow.includes('grid-template-columns:repeat(auto-fit,minmax(min(100%,245px),1fr))'))
+  fail('SRM form must use responsive container-width grid, not three fixed columns');
+if(!workflow.includes('box-sizing:border-box')||!workflow.includes('overflow-x:auto'))
+  fail('SRM fields/table do not isolate horizontal overflow');
+if(!workflow.includes("const host=target?.parentNode||document.querySelector('main.wrap')||document.body"))
+  fail('SRM panel can escape the dashboard main container');
+if(!workflow.includes("const target=isPartner()?$('action'):$('ctActionBody')?.closest('section')"))
+  fail('Master SRM panel anchor is not the Action Board section');
+ok('SRM fixed-width overflow guard, responsive field grid and in-layout mount');
+
 if(!html.includes('srm-workflow.js')||!workflow.includes('srmAppend')||!workflow.includes('SRM'))fail('SRM workflow panel missing');
 const partnerJsText=read('partner.js');
 if(!partnerJsText.includes('DCMPartnerSRM')||!partnerJsText.includes('data-srm-open'))fail('Partner SRM authenticated connector missing');
