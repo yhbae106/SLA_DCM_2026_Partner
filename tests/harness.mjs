@@ -34,6 +34,9 @@ ok('legacy unused assets remain removed');
 const required=['partnerLogin','loginPartner','loginPassword','loginBtn','outlet','month','rate','actionBody','exportAction','actionView','actionEntity','actionSearch','actionFilterReset','actionFilterCount','actionViewTitle'];
 for(const id of required)if(!html.includes('id="'+id+'"'))fail('Missing required DOM id: '+id);
 ok('required partner DOM contract');
+if(html.includes('Priority · Risk Score 산정 기준')||html.includes('>Score</th>')||html.includes('>Priority</th>'))fail('Partner scoring labels remain in Action Board');
+if(!html.includes('<th>미연동 기간</th>')||!html.includes('우선 조치 필요처'))fail('Partner Korean Action labels missing');
+ok('Partner action board has Korean period/action labels and no scoring UI');
 
 function walk(dir='.'){return fs.readdirSync(dir,{withFileTypes:true}).flatMap(e=>{const p=path.join(dir,e.name);if(e.name==='.git'||e.name==='node_modules')return[];return e.isDirectory()?walk(p):[p]})}
 for(const file of walk().filter(x=>x.endsWith('.js'))){execFileSync(process.execPath,['--check',file],{stdio:'pipe'});}
@@ -186,6 +189,9 @@ sandbox.document.querySelectorAll=()=>[];
 test.setActionContext(context);
 test.setActionView('supplied',{scroll:false});
 const tableHtml=uiElements.get('actionBody').innerHTML;
+const renderedRows=tableHtml.match(/<tr\b[^>]*>[\s\S]*?<\/tr>/g)||[];
+if(!renderedRows.length||renderedRows.some(row=>(row.match(/<td\b/g)||[]).length!==10))fail('Partner table did not render 10 aligned columns');
+if(/score-col|priority-col/.test(tableHtml))fail('Partner scoring columns reappeared');
 if(!tableHtml.includes('월별 X→O 조치 이력')||
  !tableHtml.includes('ERP업체 소통하여 정상 연동 조치')||
  !tableHtml.includes('거래처 요청 및 대웅 협조')||
