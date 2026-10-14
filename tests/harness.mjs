@@ -39,6 +39,7 @@ function walk(dir='.'){return fs.readdirSync(dir,{withFileTypes:true}).flatMap(e
 for(const file of walk().filter(x=>x.endsWith('.js'))){execFileSync(process.execPath,['--check',file],{stdio:'pipe'});}
 ok('all JavaScript parses');
 await import('./monthly-history-regression.mjs');
+await import('./srm-metrics-regression.mjs');
 
 const ctx={};ctx.window=ctx;ctx.globalThis=ctx;vm.createContext(ctx);vm.runInContext(read('logic.js'),ctx);
 const L=ctx.DCMLogic;if(!L)fail('DCMLogic not exported');
