@@ -149,7 +149,8 @@ const cRows=[
   r('2026-09','3','C-ImprovedOnly',S2('O',null,null)),
   r('2026-09','4','D-AlreadyO',S2('O','O','O'))
 ];
-test.setData([...pRows,...cRows]);
+const stopJune=r('2026-06','stop','Stop June X',S2('X',null,null));
+test.setData([...pRows,...cRows,stopJune]);
 const changeFixture=L.compare(pRows,cRows);
 const rrFixture=test.risks('2026-09',cRows,pRows,changeFixture);
 const context=test.buildActionContext('2026-09',cRows,pRows,changeFixture,rrFixture);
@@ -198,5 +199,28 @@ if(!tableHtml.includes('business-number')||!tableHtml.includes('dual-master')||!
 if(!uiElements.get('actionFilterCount').textContent.includes('4처'))
   fail('Action filtered results count does not show unique merchant total');
 ok('rendered 3-company O/X chips, master/Partner fields and read-only O-only rows');
+const julyContext=test.buildActionContext('2026-07',[],[stopJune],L.compare([stopJune],[]),[]);
+const missing=test.filterActionRows(julyContext,'stopped');
+if(missing.length!==1||missing[0].businessNo!=='stop')
+  fail('July supply-stop merchant missing because the entire July row is absent');
+const julyHist=sandbox.window.DCM_MONTHLY_ACTION_HISTORY.get('2026-07','백제약품 대전|||stop');
+if(!julyHist||julyHist.partnerAction.reasonCode!=='04'||
+ julyHist.partnerAction.plan!=='공급 중단'||
+ julyHist.partnerAction.status!=='DONE'||julyHist.partnerAction.dueDate!=='2026-07-31')
+ fail('July partner 04 supply-stop action data missing');
+uiElements.get('month').value='2026-07';
+test.setActionContext(julyContext);
+test.setActionView('stopped',{scroll:false});
+const stopHtml=uiElements.get('actionBody').innerHTML;
+if(!stopHtml.includes('7월 공급 중단(관리분류)')||
+ !stopHtml.includes('04 거래처 연동 거부/미협조')||
+ !stopHtml.includes('공급 중단')||
+ !stopHtml.includes('2026-07-31')||
+ !stopHtml.includes('완료'))
+ fail('Partner-only July supply-stop closure must display correctly in monthly view');
+if(stopHtml.includes('ERP업체 소통하여 정상 연동 조치'))
+ fail('Master plan must not be populated for supply-stop cases');
+ok('Partner July no-sales absent merchant synthetic row, 04 cause, plan, Due, DONE and Master unaffected');
+
 
 console.log('HARNESS_OK');
