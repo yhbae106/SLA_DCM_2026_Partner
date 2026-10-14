@@ -89,6 +89,7 @@ const store=()=>{const m=new Map();return {getItem:k=>m.has(k)?m.get(k):null,set
 const ls=store(),sess=store();
 const sandbox={window:{DCMLogic:L},document:{readyState:'loading',addEventListener(){},getElementById(){return null}},localStorage:ls,sessionStorage:sess,console:{warn(){}}};
 vm.createContext(sandbox);
+vm.runInContext(read('data/monthly-action-history.js'),sandbox);
 vm.runInContext(withTest,sandbox);
 const test=sandbox.window.__overrideTest;
 const testRow={outlet:'백제약품 대전',businessNo:'123'},k='백제약품 대전|||123';
@@ -152,6 +153,12 @@ test.setData([...pRows,...cRows]);
 const changeFixture=L.compare(pRows,cRows);
 const rrFixture=test.risks('2026-09',cRows,pRows,changeFixture);
 const context=test.buildActionContext('2026-09',cRows,pRows,changeFixture,rrFixture);
+const historical=sandbox.window.DCM_MONTHLY_ACTION_HISTORY.get('2026-09','백제약품 대전|||3');
+if(!historical||historical.masterAction.status!=='DONE'||historical.partnerAction.status!=='DONE')
+ fail('Partner historical X-to-O O-only completion missing');
+if(test.filterActionRows(context,'history').map(r=>r.businessNo).join(',')!=='3')
+ fail('Partner historical filtered completion not visible');
+ok('Partner month-scoped O-only completion in Action context');
 const ids=(view,entity='all',search='')=>test.filterActionRows(context,view,entity,search).map(x=>String(x.businessNo)).sort().join(',');
 if(ids('x')!=='1,2')fail('X filter must include only currently unlinked merchants');
 if(ids('persist')!=='2'||ids('all3')!=='2')fail('Persistent X / all-3-X filters failed');
@@ -171,11 +178,17 @@ const uiElements=new Map();
 for(const id of ['actionBody','actionFilterCount','actionViewTitle','actionShown','actionMore']){
   uiElements.set(id,{innerHTML:'',textContent:'',hidden:false});
 }
+uiElements.set('month',{value:'2026-09'});
 sandbox.document.getElementById=id=>uiElements.get(id)||null;
 sandbox.document.querySelectorAll=()=>[];
 test.setActionContext(context);
 test.setActionView('evaluated',{scroll:false});
 const tableHtml=uiElements.get('actionBody').innerHTML;
+if(!tableHtml.includes('월별 X→O 조치 이력')||
+ !tableHtml.includes('ERP업체 소통하여 정상 연동 조치')||
+ !tableHtml.includes('거래처 요청 및 대웅 협조')||
+ !tableHtml.includes('2026-09-30'))
+ fail('Partner historical Master/Partner cause, plan, Due and completed state not rendered');
 if(!tableHtml.includes('status-o')||!tableHtml.includes('status-x')||!tableHtml.includes('status-na'))
   fail('Rendered Action rows do not show all O/X/unassessed status chips');
 if(!tableHtml.includes('readonly-action'))
