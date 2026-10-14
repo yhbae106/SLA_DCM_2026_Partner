@@ -195,7 +195,7 @@ function buildActionContext(cur,curr,prior,ch,rr){
   for(const entry of window.DCM_MONTHLY_ACTION_HISTORY?.forMonth(cur)||[]){
     if(byKey.has(entry.key))continue;
     const [outlet,businessNo]=entry.key.split('|||');
-    if($('outlet')?.value!=='전체'&&$('outlet')?.value!==outlet)continue;
+    if(($('outlet')?.value||'전체')!=='전체'&&$('outlet')?.value!==outlet)continue;
     byKey.set(entry.key,{
       month:cur,outlet,businessNo,businessName:entry.businessName,
       manager:entry.manager||'',statuses:{'대웅제약':null,'대웅바이오':null,'한올바이오':null},
