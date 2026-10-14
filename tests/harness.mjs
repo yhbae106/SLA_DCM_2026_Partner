@@ -38,6 +38,7 @@ ok('required partner DOM contract');
 function walk(dir='.'){return fs.readdirSync(dir,{withFileTypes:true}).flatMap(e=>{const p=path.join(dir,e.name);if(e.name==='.git'||e.name==='node_modules')return[];return e.isDirectory()?walk(p):[p]})}
 for(const file of walk().filter(x=>x.endsWith('.js'))){execFileSync(process.execPath,['--check',file],{stdio:'pipe'});}
 ok('all JavaScript parses');
+await import('./monthly-history-regression.mjs');
 
 const ctx={};ctx.window=ctx;ctx.globalThis=ctx;vm.createContext(ctx);vm.runInContext(read('logic.js'),ctx);
 const L=ctx.DCMLogic;if(!L)fail('DCMLogic not exported');
