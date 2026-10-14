@@ -55,6 +55,32 @@
     }
    }
   }
+
+  // July record absent (or explicitly contains no O/X) after any June X:
+  // user-requested partner-side administrative closure, NOT evidence that a
+  // counterparty actually refused integration or that supplies were stopped.
+  const june=byMonth.get('2026-06')||new Map(),july=byMonth.get('2026-07')||new Map();
+  for(const [key,from] of june){
+   const baseline=E.map(e=>norm(from.statuses?.[e]));
+   if(!baseline.some(s=>s==='X'))continue;
+   const JulyRow=july.get(key);
+   if(JulyRow&&E.some(e=>norm(JulyRow.statuses?.[e])))continue;
+   const mKey='2026-07|||'+key;
+   if(index.has(mKey))throw new Error('동일 월 SRM 이력 중복: '+mKey);
+   const entry={
+    month:'2026-07',sourceMonth:'2026-06',nextMonth:'2026-07',
+    key,outlet:from.outlet,businessNo:String(from.businessNo),
+    businessName:from.businessName||'',manager:from.manager||'',
+    entities:E.filter((e,i)=>baseline[i]==='X'),
+    retrospective:true,type:'SUPPLY_STOP',sourceAbsent:!JulyRow,
+    startOx:baseline.map(s=>s||'—').join('/'),endOx:'—/—/—',
+    masterAction:{reasonCode:'',plan:'',dueDate:'',status:''},
+    partnerAction:{reasonCode:'04',plan:'공급 중단',
+      dueDate:monthEnd('2026-07'),status:'DONE',
+      editedFields:['reasonCode','plan','dueDate','status']}
+   };
+   index.set(mKey,entry);result.push(entry);
+  }
   byMonthKey=index;records=result;
   return result.length;
  }
