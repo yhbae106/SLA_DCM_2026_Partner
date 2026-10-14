@@ -320,6 +320,7 @@ function renderAction(){
     Math.min(actionLimit,rr.length).toLocaleString()+' / '+rr.length.toLocaleString()+'처 표시';
   if($('actionMore'))$('actionMore').hidden=rr.length<=actionLimit;
   updateKpiSelection();
+  window.DCMSRM?.update?.();
 }
 function applyShared(json){
   if(json.reasons&&typeof json.reasons==='object'&&!Array.isArray(json.reasons)){
