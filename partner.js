@@ -174,6 +174,7 @@ function hasCurrentX(r,entity='all'){
   return (entity==='all'?E:[entity]).some(e=>L.normStatus(r.statuses?.[e])==='X');
 }
 function buildActionContext(cur,curr,prior,ch,rr){
+  window.DCM_MONTHLY_ACTION_HISTORY?.refresh(data);
   const riskByKey=new Map(rr.map(r=>[key(r),r]));
   const streakByKey=new Map(streakRows(cur,curr).map(r=>[key(r),r]));
   const prevByKey=new Map(prior.map(r=>[key(r),r]));
