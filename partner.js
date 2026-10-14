@@ -162,7 +162,8 @@ const ACTION_VIEWS={
   improved:'X→O 개선 거래처',
   worsened:'O→X 악화 거래처',
   compared:'전월 비교 가능 거래처',
-  history:'월별 X→O 조치 이력',
+  history:'월별 조치 이력',
+  stopped:'7월 공급 중단(관리분류)',
   evaluated:'전체 O/X 평가 거래처',
   supplied:'도도매 공급처 (O 또는 X)'
 };
@@ -191,6 +192,17 @@ function buildActionContext(cur,curr,prior,ch,rr){
     const a=x||{...r,score:0,xCount:0,priority:'P3',streak:st?.streak||0,entityStreak:st?.entityStreak||{}};
     byKey.set(k,a);
   });
+  for(const entry of window.DCM_MONTHLY_ACTION_HISTORY?.forMonth(cur)||[]){
+    if(byKey.has(entry.key))continue;
+    const [outlet,businessNo]=entry.key.split('|||');
+    if($('outlet')?.value!=='전체'&&$('outlet')?.value!==outlet)continue;
+    byKey.set(entry.key,{
+      month:cur,outlet,businessNo,businessName:entry.businessName,
+      manager:entry.manager||'',statuses:{'대웅제약':null,'대웅바이오':null,'한올바이오':null},
+      priority:'P3',score:0,xCount:0,streak:0,entityStreak:{},
+      monthlyHistorical:true,historyType:entry.type||'X2O'
+    });
+  }
   return {rows:[...byKey.values()].sort((a,b)=>b.score-a.score||b.xCount-a.xCount||
     String(a.businessName).localeCompare(String(b.businessName),'ko')),
     prevByKey,improved,worsened,month:cur};
@@ -210,6 +222,7 @@ function filterActionRows(ctx,view='x',entity='all',search=''){
       case 'worsened':include=scopeEntities.some(e=>ctx.worsened.get(k)?.has(e));break;
       case 'compared':include=scopeEntities.some(e=>L.normStatus(statuses[e])&&L.normStatus(prior?.statuses?.[e]));break;
       case 'history':include=!!window.DCM_MONTHLY_ACTION_HISTORY?.get(ctx.month,k)?.entities.some(e=>scopeEntities.includes(e));break;
+      case 'stopped':include=window.DCM_MONTHLY_ACTION_HISTORY?.get(ctx.month,k)?.type==='SUPPLY_STOP'&&!!window.DCM_MONTHLY_ACTION_HISTORY?.get(ctx.month,k)?.entities.some(e=>scopeEntities.includes(e));break;
       case 'supplied':
       case 'evaluated':include=scopeEntities.some(e=>L.normStatus(statuses[e]));break;
       default:include=false;
@@ -272,7 +285,7 @@ function renderAction(){
     const a=actionFor(r),k=key(r),pa=a.partnerAction||{},
       hasPartner=(pa.editedFields||[]).length>0,hasX=hasCurrentX(r),
       canEdit=!a.monthlyHistorical&&(hasX||actionIndex.has(k)),
-      display=a.monthlyHistorical?'<small class="monthly-action-marker" title="월별 DCM 연동 상태 기준 사후 분류(당시 협의 수행의 증빙은 별도 확인 필요)">월별 X→O 조치 이력</small>':hasPartner?'<small class="local-action-marker">업체 입력 있음</small>':'';
+      display=a.monthlyHistorical?'<small class="monthly-action-marker" title="월별 DCM 자료 기준 사후 분류(공급 중단 또는 과거 협의 수행 증빙은 별도 확인 필요)">'+(window.DCM_MONTHLY_ACTION_HISTORY?.get($('month')?.value||'',k)?.type==='SUPPLY_STOP'?'7월 공급 중단(관리분류)':'월별 X→O 조치 이력')+'</small>':hasPartner?'<small class="local-action-marker">업체 입력 있음</small>':'';
     const status=e=>{
       const st=L.normStatus(r.statuses?.[e]),label=st||'—';
       return '<td class="status-cell"><span class="status-pill status-'+(st||'na').toLowerCase()+'" title="'+esc(e)+' '+(st==='O'?'연동':st==='X'?'미연동':'미평가')+'">'+label+'</span></td>';
