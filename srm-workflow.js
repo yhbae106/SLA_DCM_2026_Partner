@@ -6,11 +6,6 @@ const isPartner=()=>!!window.DCMPartnerSRM;
 const source=()=>isPartner()?window.DCMPartnerSRM?.rows()||[]:window.DCMActionSync?.srmRows()||[];
 const request=x=>isPartner()?window.DCMPartnerSRM?.request(x):window.DCMActionSync?.srmRequest(x);
 const actionRows=()=>isPartner()?window.DCMPartnerSRM?.actionRows?.()||[]:window.DCMActionSync?.srmActions?.()||[];
-function disagreed(){
- return actionRows().filter(a=>{const m=a.masterAction||a,p=a.partnerAction||{};
-   return !!(m.reasonCode&&p.reasonCode&&(p.editedFields||[]).includes('reasonCode')&&m.reasonCode!==p.reasonCode);
- });
-}
 let events=[],selected='',entity='대웅제약',filter='all',loading=false,ready=false;
 const labels={OPEN:'미확인',CHECKING:'원인 확인',ERP_WAIT:'ERP 협의',IN_PROGRESS:'진행 중',DONE:'조치 완료·검증 대기',VERIFIED:'X→O 검증 완료',REOPENED:'재확인 필요'};
 function draftKey(){return 'dcm-srm-draft::'+(isPartner()?window.DCMPartnerSRM?.name():'master')+'::'+selected+'::'+entity;}
@@ -19,19 +14,28 @@ function latest(){
  const k=r.outlet+'|||'+r.businessNo;if(!m.has(k)||r.month>=m.get(k).month)m.set(k,r);}
  return m;
 }
-function cases(){const m=new Map();events.forEach(e=>{const k=e.key+'|||'+e.entity;if(!m.has(k))m.set(k,{latest:e,history:[]});m.get(k).history.push(e);m.get(k).latest=e;});return [...m.values()];}
-function overdue(e){return e?.dueDate&&e.dueDate<new Date().toISOString().slice(0,10)&&!['DONE','VERIFIED'].includes(e.status);}
 function show(t,err=false){$('srmMsg').textContent=t;$('srmMsg').classList.toggle('srm-error',err);}
 function render(){
- const cs=cases(),disputes=disagreed(),tot={srmOpen:0,srmErp:0,srmOverdue:0,srmDone:0,srmVerified:0},now=latest();
- if($('srmDisputes'))$('srmDisputes').textContent=disputes.length.toLocaleString();
- cs.forEach(c=>{const s=c.latest.status;if(s==='VERIFIED')tot.srmVerified++;else tot.srmOpen++;if(s==='ERP_WAIT')tot.srmErp++;if(s==='DONE')tot.srmDone++;if(overdue(c.latest))tot.srmOverdue++;});
- Object.entries(tot).forEach(([k,v])=>{if($(k))$(k).textContent=v.toLocaleString();});
- const list=filter==='dispute'?disputes.map(a=>{const key=a.key,cur=now.get(key),chosen=E.find(e=>cur?.statuses?.[e]==='X')||E[0];return {latest:{key,entity:chosen,businessNo:a.businessNo||key.split('|||')[1],outlet:a.outlet||key.split('|||')[0],status:'CHECKING',erpVendor:'',nextAction:'마스터·유통협력사 원인 판단 차이 확인',dueDate:''}};}):
- cs.filter(c=>{const s=c.latest.status;return filter==='all'||filter==='open'&&s!=='VERIFIED'||filter==='erp'&&s==='ERP_WAIT'||filter==='done'&&s==='DONE'||filter==='verified'&&s==='VERIFIED'||filter==='overdue'&&overdue(c.latest);}).reverse();
- $('srmCount').textContent=list.length+'건';
- $('srmBody').innerHTML=list.slice(0,90).map(c=>{const x=c.latest,r=now.get(x.key),st=r?.statuses?.[x.entity]||'—';
- return '<tr><td><button class="srm-link" data-srm-open="'+esc(x.key)+'" data-srm-entity="'+esc(x.entity)+'">'+esc(r?.businessName||x.businessNo)+'</button><small>'+esc(x.outlet)+'</small></td><td>'+esc(x.entity)+'</td><td><b class="srm-ox-'+String(st).toLowerCase()+'">'+esc(st)+'</b></td><td>'+esc(labels[x.status]||x.status)+'</td><td>'+esc(x.erpVendor||'—')+'</td><td>'+ (overdue(x)?'<span class="srm-late">'+esc(x.dueDate)+'</span>':esc(x.dueDate||'—'))+'</td><td>'+esc(x.nextAction||'—')+'</td></tr>';}).join('')||'<tr><td colspan="7">아직 등록된 협의·조치 이력이 없습니다.</td></tr>';
+ const raw=source(),month=$('month')?.value||'',months=[...new Set(raw.map(r=>r.month).filter(Boolean))].sort();
+ const archive=window.DCM_MONTHLY_ACTION_HISTORY;if(raw.length)archive?.refresh?.(raw);
+ const result=window.DCMSRMAggregate?.build({actions:actionRows(),history:archive?.forMonth?.(month)||[],
+   events,month,latestMonth:months[months.length-1]||month})||{stats:{},records:[]};
+ const stats=result.stats,records=result.records,loaded=raw.length>0;
+ const numbers={srmManaged:stats.total,srmMaster:stats.master,srmPartner:stats.partner,
+  srmOpen:stats.progress,srmErp:stats.erp,srmOverdue:stats.overdue,srmDone:stats.done,
+  srmVerified:stats.verified,srmDisputes:stats.dispute};
+ for(const [id,n] of Object.entries(numbers))if($(id))$(id).textContent=loaded?Number(n||0).toLocaleString():'—';
+ const match=r=>filter==='all'||filter==='open'&&!r.done||filter==='progress'&&r.progress||
+  filter==='erp'&&r.erpRelated||filter==='overdue'&&r.overdue||filter==='done'&&r.done||
+  filter==='verified'&&r.verified||filter==='dispute'&&r.dispute||filter==='stopped'&&r.stop;
+ const list=records.filter(match),now=latest();
+ if($('srmCount'))$('srmCount').textContent=loaded?month+' · '+list.length+'처 / 관리 '+records.length+'처':'DCM 데이터 불러오는 중';
+ $('srmBody').innerHTML=list.slice(0,100).map(r=>{
+   const row=now.get(r.key),ox=E.map(e=>row?.statuses?.[e]||'—').join(' / ');
+   const origin=r.source==='monthly'?'월별 사후 이력':r.source==='live'?'기존 Action':'SRM 협의';
+   return '<tr><td><button class="srm-link" data-srm-open="'+esc(r.key)+'" data-srm-entity="'+esc(r.entity||E[0])+'">'+esc(r.businessName||r.businessNo)+'</button><small>'+esc(r.outlet)+' · '+esc(r.businessNo)+'</small></td><td>'+esc(ox)+'</td><td>'+esc(origin)+(r.masterFilled?' · 마스터':'')+(r.partnerFilled?' · 업체':'')+'</td><td>'+esc(r.statusLabel)+'</td><td>'+esc(r.erpVendor||(r.erpRelated?'ERP 관련(업체 미확인)':'—'))+'</td><td>'+esc(r.dueDate||'—')+'</td><td>'+esc(r.nextAction||'—')+'</td></tr>';
+ }).join('')||'<tr><td colspan="7">'+(loaded?'조건에 해당하는 거래처가 없습니다.':'DCM 데이터 불러오는 중')+'</td></tr>';
+ if($('srmSourceNote'))$('srmSourceNote').textContent='월별 DCM 및 기존 Action 입력 기준 · 마스터 '+(stats.master||0)+'처 / 업체 '+(stats.partner||0)+'처 · 사후분류와 당시 수행 증빙은 구분';
 }
 async function refresh(){
  if(loading||!request)return;
@@ -81,8 +85,8 @@ async function submit(ev){
 function mount(){
  if($('srmWorkflow'))return;
  const root=document.createElement('section');root.id='srmWorkflow';root.className='srm-workflow';
-root.innerHTML="<div class=\"srm-head\"><div><h2>SRM 실행관리 · 교차 검증 및 ERP 협의</h2><p>거래처별 협의 이력 · 다음 조치 · 완료 결과를 별도로 관리합니다.</p></div><button id=\"srmRefresh\" type=\"button\">최신 이력</button></div>\n<div class=\"srm-metrics\"><div>미완료<b id=\"srmOpen\">0</b></div><div>ERP 협의<b id=\"srmErp\">0</b></div><div>기한 초과<b id=\"srmOverdue\">0</b></div><div>조치 완료·검증 대기<b id=\"srmDone\">0</b></div><div>X→O 검증 완료<b id=\"srmVerified\">0</b></div></div>\n<div class=\"srm-head\"><label>업무 현황 <select id=\"srmFilter\"><option value=\"all\">전체</option><option value=\"open\">미완료</option><option value=\"erp\">ERP 협의</option><option value=\"overdue\">기한 초과</option><option value=\"done\">검증 대기</option><option value=\"verified\">X→O 검증 완료</option></select></label><span id=\"srmCount\"></span></div>\n<div class=\"srm-table\"><table><thead><tr><th>거래처</th><th>그룹사</th><th>현재 O/X</th><th>관리 상태</th><th>ERP 업체</th><th>기한</th><th>다음 조치</th></tr></thead><tbody id=\"srmBody\"></tbody></table></div>\n<p id=\"srmMsg\" class=\"srm-message\">SRM 이력을 불러오려면 최신 이력을 눌러주세요.</p>\n<div id=\"srmEditor\" hidden><div class=\"srm-head\"><h3 id=\"srmTitle\">거래처 협의/조치 이력</h3><button id=\"srmClose\" type=\"button\">닫기</button></div>\n<form id=\"srmForm\" class=\"srm-form\">\n<label>그룹사<select id=\"srmEntity\"><option>대웅제약</option><option>대웅바이오</option><option>한올바이오</option></select></label>\n<label>업무 유형<select id=\"srm-eventType\"><option value=\"CONTACT\">협의 기록</option><option value=\"CASE_UPDATE\">조치 진행</option><option value=\"VERIFICATION\">연동 검증</option></select></label>\n<label>진행상태<select id=\"srm-status\"><option value=\"OPEN\">확인 요청</option><option value=\"CHECKING\">원인 확인</option><option value=\"ERP_WAIT\">ERP 업체 협의</option><option value=\"IN_PROGRESS\">조치 진행</option><option value=\"DONE\">조치 완료·검증 대기</option><option value=\"VERIFIED\">X→O 검증 완료</option><option value=\"REOPENED\">재확인 필요</option></select></label>\n<label>원인<select id=\"srm-reason\"><option value=\"\">미확인</option><option value=\"01\">01 ERP/시스템 미구축</option><option value=\"02\">02 도입 품목 미연동</option><option value=\"03\">03 전산/데이터 오류</option><option value=\"04\">04 거래처 미협조</option><option value=\"05\">05 도매몰 미연동</option><option value=\"06\">06 신규 연동 예정</option><option value=\"07\">07 당월 매출 미발생</option></select></label>\n<label>협의 대상<select id=\"srm-contactTarget\"><option value=\"\">선택</option><option>유통협력사</option><option>도도매 거래처</option><option>ERP 업체</option><option>공동 협의</option></select></label>\n<label>ERP 업체명<input id=\"srm-erpVendor\" maxlength=\"100\" placeholder=\"업체명\"></label>\n<label>실행 담당자<input id=\"srm-owner\" maxlength=\"100\" placeholder=\"담당자명\"></label>\n<label>완료 예정일<input id=\"srm-dueDate\" type=\"date\"></label>\n<label>검증 기준월<select id=\"srm-baselineMonth\"><option value=\"\">기준월 선택</option></select></label>\n<label class=\"wide\">협의·확인 내용<textarea id=\"srm-detail\" rows=\"3\" maxlength=\"1000\" placeholder=\"누구와 어떤 사항을 확인했는지\"></textarea></label>\n<label class=\"wide\">다음 실행사항<textarea id=\"srm-nextAction\" rows=\"2\" maxlength=\"1000\" placeholder=\"책임자별 다음 조치\"></textarea></label>\n<button class=\"srm-primary\" type=\"submit\">협의/조치 이력 저장</button>\n<p class=\"srm-help\">조치 완료와 실제 연동 X→O 검증은 별도입니다. 연동 검증 완료 선택 시 기준월 X와 최신월 O를 서버에서 확인합니다.</p></form>\n<div class=\"srm-history\"><strong>변경·협의 이력</strong><div id=\"srmHistory\"></div></div></div>";;
- root.querySelector('.srm-metrics').insertAdjacentHTML('beforeend','<div>원인 판단 불일치<b id="srmDisputes">0</b></div>');
+root.innerHTML="<div class=\"srm-head\"><div><h2>SRM 실행관리 · 교차 검증 및 ERP 협의</h2><p>거래처별 협의 이력 · 다음 조치 · 완료 결과를 별도로 관리합니다.</p></div><button id=\"srmRefresh\" type=\"button\">최신 이력</button></div>\n<div class=\"srm-metrics\"><div>관리 거래처<b id=\"srmManaged\">—</b></div><div>마스터 입력<b id=\"srmMaster\">—</b></div><div>업체 입력<b id=\"srmPartner\">—</b></div><div>진행중<b id=\"srmOpen\">—</b></div><div>ERP 관련 관리<b id=\"srmErp\">—</b></div><div>기한 초과<b id=\"srmOverdue\">—</b></div><div>조치 완료<b id=\"srmDone\">—</b></div><div>DCM X→O 확인<b id=\"srmVerified\">—</b></div></div>\n<div class=\"srm-head\"><label>업무 현황 <select id=\"srmFilter\"><option value=\"all\">전체</option><option value=\"open\">미완료</option><option value=\"erp\">ERP 협의</option><option value=\"overdue\">기한 초과</option><option value=\"progress\">진행중</option><option value=\"done\">조치 완료</option><option value=\"verified\">DCM X→O 확인</option><option value=\"stopped\">공급 중단 사후분류</option></select></label><span id=\"srmCount\"></span></div>\n<div class=\"srm-table\"><table><thead><tr><th>거래처</th><th>3사 O/X</th><th>입력 근거</th><th>관리 상태</th><th>ERP 업체</th><th>기한</th><th>다음 조치</th></tr></thead><tbody id=\"srmBody\"></tbody></table></div>\n<p id=\"srmSourceNote\" class=\"srm-message\">기존 Action 및 월별 조치 이력 집계</p>\n<p id=\"srmMsg\" class=\"srm-message\">SRM 이력을 불러오려면 최신 이력을 눌러주세요.</p>\n<div id=\"srmEditor\" hidden><div class=\"srm-head\"><h3 id=\"srmTitle\">거래처 협의/조치 이력</h3><button id=\"srmClose\" type=\"button\">닫기</button></div>\n<form id=\"srmForm\" class=\"srm-form\">\n<label>그룹사<select id=\"srmEntity\"><option>대웅제약</option><option>대웅바이오</option><option>한올바이오</option></select></label>\n<label>업무 유형<select id=\"srm-eventType\"><option value=\"CONTACT\">협의 기록</option><option value=\"CASE_UPDATE\">조치 진행</option><option value=\"VERIFICATION\">연동 검증</option></select></label>\n<label>진행상태<select id=\"srm-status\"><option value=\"OPEN\">확인 요청</option><option value=\"CHECKING\">원인 확인</option><option value=\"ERP_WAIT\">ERP 업체 협의</option><option value=\"IN_PROGRESS\">조치 진행</option><option value=\"DONE\">조치 완료·검증 대기</option><option value=\"VERIFIED\">X→O 검증 완료</option><option value=\"REOPENED\">재확인 필요</option></select></label>\n<label>원인<select id=\"srm-reason\"><option value=\"\">미확인</option><option value=\"01\">01 ERP/시스템 미구축</option><option value=\"02\">02 도입 품목 미연동</option><option value=\"03\">03 전산/데이터 오류</option><option value=\"04\">04 거래처 미협조</option><option value=\"05\">05 도매몰 미연동</option><option value=\"06\">06 신규 연동 예정</option><option value=\"07\">07 당월 매출 미발생</option></select></label>\n<label>협의 대상<select id=\"srm-contactTarget\"><option value=\"\">선택</option><option>유통협력사</option><option>도도매 거래처</option><option>ERP 업체</option><option>공동 협의</option></select></label>\n<label>ERP 업체명<input id=\"srm-erpVendor\" maxlength=\"100\" placeholder=\"업체명\"></label>\n<label>실행 담당자<input id=\"srm-owner\" maxlength=\"100\" placeholder=\"담당자명\"></label>\n<label>완료 예정일<input id=\"srm-dueDate\" type=\"date\"></label>\n<label>검증 기준월<select id=\"srm-baselineMonth\"><option value=\"\">기준월 선택</option></select></label>\n<label class=\"wide\">협의·확인 내용<textarea id=\"srm-detail\" rows=\"3\" maxlength=\"1000\" placeholder=\"누구와 어떤 사항을 확인했는지\"></textarea></label>\n<label class=\"wide\">다음 실행사항<textarea id=\"srm-nextAction\" rows=\"2\" maxlength=\"1000\" placeholder=\"책임자별 다음 조치\"></textarea></label>\n<button class=\"srm-primary\" type=\"submit\">협의/조치 이력 저장</button>\n<p class=\"srm-help\">조치 완료와 실제 연동 X→O 검증은 별도입니다. 연동 검증 완료 선택 시 기준월 X와 최신월 O를 서버에서 확인합니다.</p></form>\n<div class=\"srm-history\"><strong>변경·협의 이력</strong><div id=\"srmHistory\"></div></div></div>";;
+ root.querySelector('.srm-metrics').insertAdjacentHTML('beforeend','<div>원인 판단 불일치<b id="srmDisputes">—</b></div>');
  root.querySelector('#srmFilter').insertAdjacentHTML('beforeend','<option value="dispute">마스터·파트너 원인 불일치</option>');
  const target=isPartner()?$('action'):$('ctActionBody')?.closest('section');
  const host=target?.parentNode||document.querySelector('main.wrap')||document.body;
@@ -94,10 +98,14 @@ st.textContent=".srm-workflow{background:#fff;border:1px solid #d5e2ef;border-ra
  $('srmRefresh').onclick=refresh;$('srmFilter').onchange=e=>{filter=e.target.value;render();};
  $('srmClose').onclick=()=>{$('srmEditor').hidden=true;selected='';};
  $('srmEntity').onchange=e=>{const k=selected;open(k,e.target.value);};
- $('srmForm').onsubmit=submit;$('srmForm').addEventListener('input',()=>{$('srmForm').dataset.dirty='1';draft();});
+ ['month','manager','outlet'].forEach(id=>$(id)?.addEventListener('change',()=>render()));
+ window.addEventListener('dcm-action-sync-applied',()=>render());
+ window.addEventListener('dcm-action-reasons-updated',()=>render());
+ window.addEventListener('dcm-srm-data-changed',()=>render());
+  $('srmForm').onsubmit=submit;$('srmForm').addEventListener('input',()=>{$('srmForm').dataset.dirty='1';draft();});
  document.addEventListener('click',e=>{const b=e.target.closest('[data-srm-open]');if(b){e.preventDefault();open(b.dataset.srmOpen,b.dataset.srmEntity||'대웅제약');}});
  render();
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount,{once:true});else mount();
-window.DCMSRM={open,refresh};
+window.DCMSRM={open,refresh,update:render};
 })();
