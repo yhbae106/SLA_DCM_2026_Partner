@@ -151,7 +151,7 @@ function streakRows(cur,curr){
 }
 function risks(cur,curr,prior,ch){const pmap=new Map(prior.map(r=>[key(r),r])),o2x=new Set((ch.oToX||[]).map(x=>`${x.outlet}|||${x.businessNo}|||${x.entity}`));return streakRows(cur,curr).filter(r=>E.some(e=>L.normStatus(r.statuses?.[e])==='X')).map(r=>{let score=0,xCount=0;E.forEach(e=>{if(L.normStatus(r.statuses?.[e])!=='X')return;xCount++;score+=2;const st=r.entityStreak[e]||0;if(st>=2)score+=3*Math.min(st-1,3);if(o2x.has(`${r.outlet}|||${r.businessNo}|||${e}`))score+=4;if(!L.normStatus(pmap.get(key(r))?.statuses?.[e]))score+=2;});return {...r,score,xCount,priority:score>=12?'P1':score>=7?'P2':'P3'};}).sort((a,b)=>b.score-a.score||b.xCount-a.xCount||String(a.businessName).localeCompare(String(b.businessName),'ko'));}
 const actionMap=()=>new Map(actions.map(a=>[a.key,a]));
-function actionFor(r){return actionIndex.get(key(r))||{};}
+function actionFor(r){const hist=window.DCM_MONTHLY_ACTION_HISTORY?.get($('month')?.value||'',key(r));if(hist)return {...hist.masterAction,masterAction:{...hist.masterAction},partnerAction:{...hist.partnerAction},monthlyHistorical:true};return actionIndex.get(key(r))||{};}
 function statusLabel(s){return ({TODO:'미조치',IN_PROGRESS:'진행중',WAITING:'회신대기',DONE:'완료'})[s]||'미조치';}
 function renderPersist(cur,curr){const rows=streakRows(cur,curr);let pa=0,ps=0,a3=0,a3s=0;rows.forEach(r=>{let hp=false;E.forEach(e=>{if((r.entityStreak[e]||0)>=2){ps++;hp=true;}});if(hp)pa++;if(E.every(e=>L.normStatus(r.statuses?.[e])==='X')){a3++;a3s+=3;}});$('persistAbs').textContent=`${pa}처`;if($('persistState'))$('persistState').textContent=`${ps}건`;$('all3Abs').textContent=`${a3}처`;if($('all3State'))$('all3State').textContent=`${a3s}건`;}
 function render(){const cur=$('month')?.value;if(!cur)return renderEmpty();const prev=prevMonth(cur),curr=scope(cur),prior=prev?scope(prev):[],s=L.summarize(curr),ps=L.summarize(prior),ch=L.compare(prior,curr),rr=risks(cur,curr,prior,ch);$('scopeLabel').textContent=`${partner} · ${$('outlet').value} · ${monthLabel(cur)}`;$('rate').textContent=pct(s.rate);$('rate').closest('.kpi').querySelector('small').textContent=`O ${s.O.toLocaleString()}건 / O+X ${s.evaluated.toLocaleString()}건`;$('xCount').textContent=s.X.toLocaleString();$('needCount').textContent=s.needAbsolute.toLocaleString();$('supplyCount').textContent=s.suppliedAbsolute.toLocaleString();$('x2o').textContent=(ch.xToO||[]).length.toLocaleString();$('o2x').textContent=(ch.oToX||[]).length.toLocaleString();if($('targetNeed'))$('targetNeed').textContent=`${s.evaluated?Math.ceil(Math.max(0,TARGET*s.evaluated-s.O)):0}건`;renderPersist(cur,curr);$('entityCards').innerHTML=E.map(e=>{const x=s.byEntity[e];return `<div class="entity"><h3>${e}</h3><div class="rate">${pct(x.rate)}</div><div class="meter"><i style="width:${x.rate==null?0:x.rate*100}%"></i></div><small>O ${x.O.toLocaleString()} · X ${x.X.toLocaleString()} · 평가 ${(x.O+x.X).toLocaleString()}</small></div>`}).join('');$('changeSub').textContent=prev?`${monthLabel(prev)} → ${monthLabel(cur)}`:'비교할 이전 월이 없습니다.';$('deltaRate').textContent=prev&&s.rate!=null&&ps.rate!=null?pp(s.rate-ps.rate):'—';$('kpiDeltaRate').textContent=$('deltaRate').textContent;$('newSupply').textContent=(ch.newSupply||[]).length.toLocaleString();$('stopSupply').textContent=(ch.stoppedSupply||[]).length.toLocaleString();$('changeX2O').textContent=(ch.xToO||[]).length.toLocaleString();actionContext=buildActionContext(cur,curr,prior,ch,rr);renderAction();}
@@ -162,6 +162,7 @@ const ACTION_VIEWS={
   improved:'X→O 개선 거래처',
   worsened:'O→X 악화 거래처',
   compared:'전월 비교 가능 거래처',
+  history:'월별 X→O 조치 이력',
   evaluated:'전체 O/X 평가 거래처',
   supplied:'도도매 공급처 (O 또는 X)'
 };
@@ -207,6 +208,7 @@ function filterActionRows(ctx,view='x',entity='all',search=''){
       case 'improved':include=scopeEntities.some(e=>ctx.improved.get(k)?.has(e));break;
       case 'worsened':include=scopeEntities.some(e=>ctx.worsened.get(k)?.has(e));break;
       case 'compared':include=scopeEntities.some(e=>L.normStatus(statuses[e])&&L.normStatus(prior?.statuses?.[e]));break;
+      case 'history':include=!!window.DCM_MONTHLY_ACTION_HISTORY?.get(ctx.month,k)?.entities.some(e=>scopeEntities.includes(e));break;
       case 'supplied':
       case 'evaluated':include=scopeEntities.some(e=>L.normStatus(statuses[e]));break;
       default:include=false;
@@ -248,7 +250,7 @@ function actionFieldCell(a,k,field,canEdit=true){
   let input='';
   if(!canEdit){const raw=field==='reasonCode'?(v.partnerValue?esc(v.partnerValue+' '+(reasons[v.partnerValue]||'')):'미입력'):
     field==='status'?(v.partnerValue?esc(statusLabel(v.partnerValue)):'미입력'):esc(v.partnerValue||'미입력');
-    input='<span class="readonly-action" title="현재 X가 없는 신규 거래처는 조회 전용입니다.">'+raw+'</span>';
+    input='<span class="readonly-action" title="'+(a.monthlyHistorical?'월별 실적 기준 사후 정리 이력: 현재 Action Board 원본과 별도 저장':'현재 X가 없는 신규 거래처는 조회 전용입니다.')+'">'+raw+'</span>';
   }else if(field==='reasonCode'){
     const opts=Object.entries(reasons).map(([c,label])=>`<option value="${esc(c)}" ${v.partnerValue===c?'selected':''}>${esc(c)} ${esc(label)}</option>`).join('');
     input=`<select class="${cls}" data-field="${field}" data-key="${keyAttr}"><option value="" ${!v.partnerValue?'selected':''}>업체 미입력</option>${opts}</select>`;
@@ -268,8 +270,8 @@ function renderAction(){
   body.innerHTML=visible.map(r=>{
     const a=actionFor(r),k=key(r),pa=a.partnerAction||{},
       hasPartner=(pa.editedFields||[]).length>0,hasX=hasCurrentX(r),
-      canEdit=hasX||actionIndex.has(k),
-      display=hasPartner?'<small class="local-action-marker">업체 입력 있음</small>':'';
+      canEdit=!a.monthlyHistorical&&(hasX||actionIndex.has(k)),
+      display=a.monthlyHistorical?'<small class="monthly-action-marker" title="월별 DCM 연동 상태 기준 사후 분류(당시 협의 수행의 증빙은 별도 확인 필요)">월별 X→O 조치 이력</small>':hasPartner?'<small class="local-action-marker">업체 입력 있음</small>':'';
     const status=e=>{
       const st=L.normStatus(r.statuses?.[e]),label=st||'—';
       return '<td class="status-cell"><span class="status-pill status-'+(st||'na').toLowerCase()+'" title="'+esc(e)+' '+(st==='O'?'연동':st==='X'?'미연동':'미평가')+'">'+label+'</span></td>';
