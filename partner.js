@@ -274,7 +274,7 @@ function renderAction(){
       const st=L.normStatus(r.statuses?.[e]),label=st||'—';
       return '<td class="status-cell"><span class="status-pill status-'+(st||'na').toLowerCase()+'" title="'+esc(e)+' '+(st==='O'?'연동':st==='X'?'미연동':'미평가')+'">'+label+'</span></td>';
     };
-    const name='<strong>'+esc(r.businessName)+'</strong><small class="business-number">'+esc(r.businessNo)+'</small>'+display;
+    const name='<strong>'+esc(r.businessName)+'</strong><small class="business-number">'+esc(r.businessNo)+'</small><button type="button" class="srm-launch" data-srm-open="'+esc(k)+'">SRM 협의</button>'+display;
     const changeSet=actionContext?.improved.get(k)||actionContext?.worsened.get(k);
     const trend=changeSet?.size?'<small class="action-trend">전월 대비 상태 변경</small>':'';
     return '<tr class="'+(hasX?'':'not-x-row')+'">'+
@@ -447,5 +447,6 @@ function start(){
     $('partnerLogin').classList.add('hidden-login');loadCachedData();void pull();
   }
 }
+window.DCMPartnerSRM={rows:()=>data,actionRows:()=>actions,name:()=>partner,request:x=>{if(!partner||!password)throw Error('파트너 로그인 후 이용해 주세요.');return request({...x,partner,password});}};
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();
