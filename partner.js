@@ -167,6 +167,25 @@ const ACTION_VIEWS={
   supplied:'도도매 공급처 (O 또는 X)'
 };
 const KPI_VIEWS={rate:'supplied',unlinked:'x',need:'x',persist:'persist',all3:'all3',improved:'improved',worsened:'worsened',supply:'supplied'};
+const VIEW_ORDER=['x','persist','all3','improved','worsened','history','supplied','new','stopped'];
+function scopedViewLabel(view,month){
+ if(view!=='new'&&view!=='stopped')return ACTION_VIEWS[view]||ACTION_VIEWS.x;
+ const m=/^\d{4}-(0[1-9]|1[0-2])$/.exec(String(month||''));
+ return (m?Number(m[1])+'월':'선택월')+' '+(view==='new'?'신규 도도매':'중단 도도매');
+}
+function syncActionViewOptions(month){
+ const select=$('actionView');if(!select?.options)return;
+ const seen=new Set();
+ for(const option of [...select.options]){
+  const view=option.value;
+  if(!Object.prototype.hasOwnProperty.call(ACTION_VIEWS,view)||seen.has(view)){option.remove();continue;}
+  seen.add(view);option.textContent=scopedViewLabel(view,month);
+ }
+ for(const view of VIEW_ORDER)if(!seen.has(view)){
+  const option=document.createElement('option');option.value=view;option.textContent=scopedViewLabel(view,month);select.appendChild(option);
+ }
+ if(!Object.prototype.hasOwnProperty.call(ACTION_VIEWS,select.value))select.value=actionView;
+}
 function evaluated(r,entity='all'){
   return (entity==='all'?E:[entity]).some(e=>L.normStatus(r.statuses?.[e])!==null);
 }
@@ -288,6 +307,7 @@ function actionFieldCell(a,k,field,canEdit=true){
   return `<td class="dual-action-cell"><div class="dual-master"><b>마스터</b><span title="${esc(v.masterLabel)}">${esc(v.masterLabel)}</span></div><div class="dual-partner"><b>업체</b>${input}</div>${wip?'<small class="pending-indicator">서버 전송 대기</small>':''}</td>`;
 }
 function renderAction(){
+  syncActionViewOptions($('month')?.value);
   const rr=filterActionRows(actionContext,actionView,actionEntity,actionSearch);
   const visible=rr.slice(0,actionLimit),body=$('actionBody');
   if(!body)return;
@@ -295,7 +315,7 @@ function renderAction(){
     const a=actionFor(r),k=key(r),pa=a.partnerAction||{},
       hasPartner=(pa.editedFields||[]).length>0,hasX=hasCurrentX(r),
       canEdit=!a.monthlyHistorical&&(hasX||actionIndex.has(k)),
-      display=a.monthlyHistorical?'<small class="monthly-action-marker" title="월별 DCM 자료 기준 사후 분류(공급 중단 또는 과거 협의 수행 증빙은 별도 확인 필요)">'+(window.DCM_MONTHLY_ACTION_HISTORY?.get($('month')?.value||'',k)?.type==='SUPPLY_STOP'?'7월 공급 중단(관리분류)':'월별 X→O 조치 이력')+'</small>':hasPartner?'<small class="local-action-marker">업체 입력 있음</small>':'';
+      display=a.monthlyHistorical?'<small class="monthly-action-marker" title="월별 DCM 자료 기준 사후 분류(공급 중단 또는 과거 협의 수행 증빙은 별도 확인 필요)">'+(window.DCM_MONTHLY_ACTION_HISTORY?.get($('month')?.value||'',k)?.type==='SUPPLY_STOP'?'공급 중단(사후 관리 분류)':'월별 X→O 조치 이력')+'</small>':hasPartner?'<small class="local-action-marker">업체 입력 있음</small>':'';
     const status=e=>{
       const st=L.normStatus(r.statuses?.[e]),label=st||'—';
       return '<td class="status-cell"><span class="status-pill status-'+(st||'na').toLowerCase()+'" title="'+esc(e)+' '+(st==='O'?'연동':st==='X'?'미연동':'미평가')+'">'+label+'</span></td>';
@@ -315,7 +335,7 @@ function renderAction(){
         xs=rr.reduce((sum,r)=>sum+E.filter(e=>L.normStatus(r.statuses?.[e])==='X').length,0);
   if($('actionFilterCount'))$('actionFilterCount').textContent=
     rr.length.toLocaleString()+'처 · O '+(assessed-xs).toLocaleString()+'건 / X '+xs.toLocaleString()+'건 (법인별 평가)';
-  if($('actionViewTitle'))$('actionViewTitle').textContent=ACTION_VIEWS[actionView];
+  if($('actionViewTitle'))$('actionViewTitle').textContent=scopedViewLabel(actionView,$('month')?.value);
   if($('actionShown'))$('actionShown').textContent=
     Math.min(actionLimit,rr.length).toLocaleString()+' / '+rr.length.toLocaleString()+'처 표시';
   if($('actionMore'))$('actionMore').hidden=rr.length<=actionLimit;
