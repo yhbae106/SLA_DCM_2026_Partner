@@ -98,7 +98,7 @@ function build({actions=[],history=[],events=[],month='',latestMonth=''}={}){
   const plan=masterPlan&&partnerPlan&&masterPlan!==partnerPlan?
    '마스터: '+masterPlan+' / 업체: '+partnerPlan:partnerPlan||masterPlan;
   r.nextAction=clean(lastEvent.nextAction)||plan||
-   (r.recorded?'추가 진행사항 확인':'—');
+   (r.needsAction&&r.recorded?'진행사항 확인':'—');
   if(r.needsAction)stats.needsAction++;
   if(r.progress)stats.progress++;
   if(r.done)stats.done++;
