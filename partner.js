@@ -57,7 +57,7 @@ function rebuildActions(){
     a.masterAction=a.masterAction||Object.fromEntries(EDIT_FIELDS.map(f=>[f,a[f]??'']));
     const own=a.partnerAction||{},written=new Set(own.editedFields||[]);
     EDIT_FIELDS.forEach(f=>{if(written.has(f))a[f]=own[f]??'';});
-    a.partnerPending=!!Object.keys(actionOverrides[a.key]?.fields||{}).length;
+    a.partnerPending=Object.keys(actionOverrides[a.key]?.fields||{}).some(f=>EDIT_FIELDS.includes(f));
   }
   actionIndex=map;actions=[...map.values()];
   updateSaveButton();
@@ -311,7 +311,7 @@ function renderAction(){
   if(!body)return;
   body.innerHTML=visible.map(r=>{
     const a=actionFor(r),k=key(r),pa=a.partnerAction||{},
-      hasPartner=(pa.editedFields||[]).length>0,hasX=hasCurrentX(r),
+      hasPartner=(pa.editedFields||[]).some(f=>EDIT_FIELDS.includes(f)),hasX=hasCurrentX(r),
       canEdit=!a.monthlyHistorical&&(hasX||actionIndex.has(k)),
       display=a.monthlyHistorical?'<small class="monthly-action-marker" title="월별 DCM 자료 기준 사후 분류(공급 중단 또는 과거 협의 수행 증빙은 별도 확인 필요)">'+(window.DCM_MONTHLY_ACTION_HISTORY?.get($('month')?.value||'',k)?.type==='SUPPLY_STOP'?'공급 중단(사후 관리 분류)':'월별 X→O 조치 이력')+'</small>':hasPartner?'<small class="local-action-marker">업체 입력 있음</small>':'';
     const status=e=>{
