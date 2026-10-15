@@ -210,7 +210,7 @@ if(/data-field="dueDate"/.test(tableHtml)||/\b\d{4}-\d{2}-\d{2}\b/.test(tableHtm
 if(partnerJs.includes("'마스터 Due':")||partnerJs.includes("'업체 Due':")||partnerJs.includes("'Due':"))fail('Due date columns must not be exported');
 if(!tableHtml.includes('data-label="조치계획"'))fail('Partner card field labels missing');
 if(/score-col|priority-col/.test(tableHtml))fail('Partner scoring columns reappeared');
-if(!tableHtml.includes('월별 X→O 조치 이력')||
+if(!tableHtml.includes('월별 일괄기재')||
  !tableHtml.includes('ERP업체 소통하여 정상 연동 조치')||
  !tableHtml.includes('거래처 요청 및 대웅 협조'))
  fail('Partner historical Master/Partner cause, plan and completed state not rendered');
@@ -223,6 +223,38 @@ if(!tableHtml.includes('business-number')||!tableHtml.includes('dual-master')||!
 if(!uiElements.get('actionFilterCount').textContent.includes('4처'))
   fail('Action filtered results count does not show unique merchant total');
 ok('rendered 3-company O/X chips, master/Partner fields and read-only O-only rows');
+
+const historicKey='백제약품 대전|||3';
+test.applyShared({actions:[{key:historicKey,outlet:'백제약품 대전',businessNo:'3',
+ status:'TODO',reasonCode:'',plan:''}]});
+test.setActionView('history',{scroll:false});
+let editableHistory=uiElements.get('actionBody').innerHTML;
+if(!editableHistory.includes('업체 입력 수정 가능')||
+ !editableHistory.includes('data-key="'+historicKey+'"')||
+ !editableHistory.includes('value="거래처 요청 및 대웅 협조"')||
+ !editableHistory.includes('data-field="status"')||
+ editableHistory.includes('readonly-action'))
+ fail('Registered historical bulk entry must render editable Partner reason/plan/status, including O-only rows');
+const beforeEdit=test.actionFor(cRows[2]);
+if(beforeEdit.partnerAction.plan!=='거래처 요청 및 대웅 협조'||
+ (beforeEdit.partnerSavedFields||[]).length)
+ fail('Synthetic defaults must not be misidentified as a saved Partner edit');
+test.savePartnerOverride(historicKey,'plan','업체가 확인한 수정 계획');
+const afterEdit=test.actionFor(cRows[2]);
+if(afterEdit.partnerAction.plan!=='업체가 확인한 수정 계획'||
+ !(afterEdit.partnerSavedFields||[]).includes('plan')||
+ !test.getPending().some(p=>p.key===historicKey&&p.field==='plan'))
+ fail('Partner manual correction must override bulk-prefilled plan and stage authenticated save');
+await test.savePendingActions();
+if(test.getPending().length||test.actionFor(cRows[2]).partnerAction.plan!=='업체가 확인한 수정 계획')
+ fail('Historical Partner edit must survive server acknowledgement and replace the default');
+test.renderAction();
+if(!uiElements.get('actionBody').innerHTML.includes('업체 수정값 적용됨')||
+ !uiElements.get('actionBody').innerHTML.includes('업체가 확인한 수정 계획'))
+ fail('Re-render reverted a confirmed Partner correction to generated bulk text');
+test.setActionView('supplied',{scroll:false});
+ok('historical Partner default fields are editable, real saves take priority and persist after acknowledgement');
+
 const julyContext=test.buildActionContext('2026-07',[],[stopJune],L.compare([stopJune],[]),[]);
 const missing=test.filterActionRows(julyContext,'stopped');
 if(missing.length!==1||missing[0].businessNo!=='stop')
@@ -236,7 +268,7 @@ uiElements.get('month').value='2026-07';
 test.setActionContext(julyContext);
 test.setActionView('stopped',{scroll:false});
 const stopHtml=uiElements.get('actionBody').innerHTML;
-if(!stopHtml.includes('공급 중단(사후 관리 분류)')||
+if(!stopHtml.includes('공급 중단 사후분류')||
  !stopHtml.includes('04 거래처 연동 거부/미협조')||
  !stopHtml.includes('공급 중단')||
  !stopHtml.includes('완료')||
