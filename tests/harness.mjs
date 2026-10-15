@@ -211,7 +211,7 @@ if(/data-field="dueDate"/.test(tableHtml)||/\b\d{4}-\d{2}-\d{2}\b/.test(tableHtm
 if(partnerJs.includes("'마스터 Due':")||partnerJs.includes("'업체 Due':")||partnerJs.includes("'Due':"))fail('Due date columns must not be exported');
 if(!tableHtml.includes('data-label="조치계획"'))fail('Partner card field labels missing');
 if(/score-col|priority-col/.test(tableHtml))fail('Partner scoring columns reappeared');
-if(!tableHtml.includes('월별 일괄기재')||
+if(tableHtml.includes('월별 일괄기재')||tableHtml.includes('업체 입력 수정 가능')||
  !tableHtml.includes('ERP업체 소통하여 정상 연동 조치')||
  !tableHtml.includes('거래처 요청 및 대웅 협조'))
  fail('Partner historical Master/Partner cause, plan and completed state not rendered');
@@ -230,7 +230,7 @@ test.applyShared({actions:[{key:historicKey,outlet:'백제약품 대전',busines
  status:'TODO',reasonCode:'',plan:''}]});
 test.setActionView('history',{scroll:false});
 let editableHistory=uiElements.get('actionBody').innerHTML;
-if(!editableHistory.includes('업체 입력 수정 가능')||
+if(editableHistory.includes('월별 일괄기재')||
  !editableHistory.includes('data-key="'+historicKey+'"')||
  !editableHistory.includes('value="거래처 요청 및 대웅 협조"')||
  !editableHistory.includes('data-field="status"')||
@@ -250,7 +250,7 @@ await test.savePendingActions();
 if(test.getPending().length||test.actionFor(cRows[2]).partnerAction.plan!=='업체가 확인한 수정 계획')
  fail('Historical Partner edit must survive server acknowledgement and replace the default');
 test.renderAction();
-if(!uiElements.get('actionBody').innerHTML.includes('업체 수정값 적용됨')||
+if(uiElements.get('actionBody').innerHTML.includes('업체 수정값 적용됨')||
  !uiElements.get('actionBody').innerHTML.includes('업체가 확인한 수정 계획'))
  fail('Re-render reverted a confirmed Partner correction to generated bulk text');
 const displayed=sandbox.window.DCMPartnerSRM.viewRows().find(v=>v.key===historicKey);
@@ -277,7 +277,7 @@ uiElements.get('month').value='2026-07';
 test.setActionContext(julyContext);
 test.setActionView('stopped',{scroll:false});
 const stopHtml=uiElements.get('actionBody').innerHTML;
-if(!stopHtml.includes('공급 중단 사후분류')||
+if(!stopHtml.includes('<small class="monthly-action-marker">공급 중단</small>')||
  !stopHtml.includes('04 거래처 연동 거부/미협조')||
  !stopHtml.includes('공급 중단')||
  !stopHtml.includes('완료')||
