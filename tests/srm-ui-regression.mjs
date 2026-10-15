@@ -136,6 +136,7 @@ async function verify(partner){
  assert.ok(!Object.hasOwn(append,'dueDate'),'Retired date must not be sent');
  element('srm-kind').value='verify';
  element('srm-baselineMonth').value='2026-06';
+ element('srm-detail').value='연동 검증 요청';
  const count=requests;
  await element('srmForm').onsubmit({preventDefault(){}});
  assert.equal(requests,count,'X-to-O verification with no later O must be blocked before server save');
