@@ -72,9 +72,8 @@ function render(){
   '선택한 조건에 해당하는 거래처가 없습니다. 다른 상태를 선택해 주세요.'
  )+'</td></tr>';
  if($('srmSourceNote'))$('srmSourceNote').textContent=
-  '조치 이력 있음 = 마스터·업체 Action 입력 또는 별도 협의 기록(거래처 중복 제외). '+
-  '조치 입력은 조치 완료와 다릅니다. 월별 DCM 사후분류 '+(stats.retrospective||0)+
-  '처는 실제 조치 입력으로 계산하지 않습니다.'+
+  '조치 이력 '+(stats.recorded||0)+'처 = 일괄기재만 '+(stats.bulkOnly||0)+'처 + 실제 마스터·업체 입력/추가 협의 '+(stats.actualRecorded||0)+'처 (거래처 중복 제외). '+
+  '일괄기재는 실제 실행 증빙이 아니며, 조치 내용 입력 자체를 조치 완료로 계산하지 않습니다.'+
   (ready?'':' · 추가 SRM 협의 기록 미조회'+(canHistory()?'':'(공용 로그인 후 확인 가능)'))+
   (shown.length>150?' · 첫 150처 표시':'');
  syncHistoryUI();
