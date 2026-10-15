@@ -34,6 +34,11 @@ ok('legacy unused assets remain removed');
 const required=['partnerLogin','loginPartner','loginPassword','loginBtn','outlet','month','rate','actionBody','exportAction','actionView','actionEntity','actionSearch','actionFilterReset','actionFilterCount','actionViewTitle'];
 for(const id of required)if(!html.includes('id="'+id+'"'))fail('Missing required DOM id: '+id);
 ok('required partner DOM contract');
+const actionHeader=html.match(/<div class="table-wrap"><table><thead><tr>(.*?)<\/tr>/)?.[1]||'';
+if((actionHeader.match(/<th/g)||[]).length!==9||actionHeader.includes('완료 예정일'))fail('Partner Action Board must have exactly nine visible columns without due date');
+const responsiveCss=read('partner.css');
+if(!responsiveCss.includes('table-layout:fixed')||!responsiveCss.includes('overflow-x:hidden')||!responsiveCss.includes('@media(max-width:1180px)'))fail('Partner Action Board responsive layout or horizontal scroll guard missing');
+ok('nine-column Partner board with responsive desktop and small-device layouts');
 if(html.includes('Priority · Risk Score 산정 기준')||html.includes('>Score</th>')||html.includes('>Priority</th>'))fail('Partner scoring labels remain in Action Board');
 if(!html.includes('<th>미연동 기간</th>')||!html.includes('우선 조치 필요처'))fail('Partner Korean Action labels missing');
 ok('Partner action board has Korean period/action labels and no scoring UI');
@@ -190,7 +195,9 @@ test.setActionContext(context);
 test.setActionView('supplied',{scroll:false});
 const tableHtml=uiElements.get('actionBody').innerHTML;
 const renderedRows=tableHtml.match(/<tr\b[^>]*>[\s\S]*?<\/tr>/g)||[];
-if(!renderedRows.length||renderedRows.some(row=>(row.match(/<td\b/g)||[]).length!==10))fail('Partner table did not render 10 aligned columns');
+if(!renderedRows.length||renderedRows.some(row=>(row.match(/<td\b/g)||[]).length!==9))fail('Partner table did not render 9 aligned columns');
+if(/data-field="dueDate"/.test(tableHtml))fail('Due date must not render, even while persisted');
+if(!tableHtml.includes('data-label="조치계획"'))fail('Partner card field labels missing');
 if(/score-col|priority-col/.test(tableHtml))fail('Partner scoring columns reappeared');
 if(!tableHtml.includes('월별 X→O 조치 이력')||
  !tableHtml.includes('ERP업체 소통하여 정상 연동 조치')||
