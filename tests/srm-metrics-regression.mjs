@@ -22,7 +22,7 @@ const events=[{key:'A|||1',status:'ERP_WAIT',entity:'대웅제약',erpVendor:'�
 const result=M.build({actions,history,events,month:'2026-09',latestMonth:'2026-09'});
 const s=result.stats;
 for(const [key,value] of Object.entries({total:4,master:2,partner:1,retrospective:2,
- srm:1,recorded:3,unrecorded:1,needsAction:3,progress:2,done:0,verified:1,stopped:1,erp:1})){
+ srm:1,recorded:4,actualRecorded:3,bulkOnly:1,unrecorded:0,needsAction:3,progress:2,done:0,verified:1,stopped:1,erp:1})){
  if(s[key]!==value)fail(key+' should be '+value+', got '+JSON.stringify(s));
 }
 if('overdue' in s)fail('Retired due-date metric still exists');
@@ -31,7 +31,7 @@ if(!converted?.verified||converted?.done||converted?.source!=='live'||converted?
  fail('Actual live Action must win over synthetic historical notes; X-to-O is not proof of completed work');
 const stopped=result.records.find(r=>r.key==='B|||4');
 if(!stopped?.needsAction||stopped?.done||stopped?.masterFilled||stopped?.partnerFilled||
- stopped.erpRelated||stopped.verified||stopped.recorded||stopped.nextAction!=='—')
+ stopped.erpRelated||stopped.verified||!stopped.recorded||stopped.actualRecorded||!stopped.nextAction.startsWith('일괄 제안: '))
  fail('Automatic supply stop must not count as proved action or ERP discussion');
 const erpFromPlan=result.records.find(r=>r.key==='A|||3');
 if(erpFromPlan.erpRelated)fail('ERP wording in a plan is not evidence of vendor contact');
@@ -41,10 +41,10 @@ const fabricated=Array.from({length:41},(_,i)=>a('RETRO|||'+i,{month:'2026-06',s
  partnerAction:{reasonCode:'06',plan:'거래처 요청 및 대웅 협조',status:'IN_PROGRESS',dueDate:'2026-06-30'}}));
 const inferred=M.build({history:fabricated,month:'2026-06',latestMonth:'2026-09'});
 for(const [key,value] of Object.entries({total:41,retrospective:41,master:0,partner:0,
- progress:0,done:0,erp:0,srm:0,recorded:0,unrecorded:41,needsAction:41})){
+ progress:0,done:0,erp:0,srm:0,recorded:41,actualRecorded:0,bulkOnly:41,unrecorded:0,needsAction:41})){
  if(inferred.stats[key]!==value)fail('41 synthetic historical cases wrongly counted as real '+key);
 }
-if(inferred.records.some(r=>r.progress||r.done||r.erpRelated||r.masterFilled||r.partnerFilled))
+if(inferred.records.some(r=>r.progress||r.done||r.erpRelated||r.masterFilled||r.partnerFilled||r.actualRecorded))
  fail('Retrospective status fabricated a confirmed activity');
 
 const completed=M.build({history:[a('X|||1',{month:'2026-09',type:'X2O',masterAction:{status:'DONE'}})],
@@ -65,11 +65,23 @@ const entered=M.build({month:'2026-09',latestMonth:'2026-09',actions:[
  a('D|||3',{plan:'',reasonCode:'',status:'TODO',
   partnerAction:{status:'TODO',dueDate:'2026-09-30',editedFields:['dueDate']}})
 ]});
-if(entered.stats.total!==2||entered.stats.recorded!==2||entered.stats.master!==1||
+if(entered.stats.total!==2||entered.stats.recorded!==2||entered.stats.actualRecorded!==2||entered.stats.master!==1||
  entered.stats.partner!==2||entered.stats.done!==0||entered.stats.srm!==0)
  fail('Master/Partner Action entries must be union-counted once, not mistaken for completed work');
 const row=entered.records.find(r=>r.key==='D|||1');
 if(!row?.recorded||row.status==='DONE'||!row.nextAction.includes('마스터:')||
  !row.nextAction.includes('업체:')||row.recordSource!=='마스터 입력 · 업체 입력')
  fail('Action Board plans and both source labels must be reused without duplicate SRM entry');
+const editedHistory=M.build({month:'2026-06',latestMonth:'2026-09',
+ history:[a('Q|||1',{month:'2026-06',type:'X2O',sourceMonth:'2026-06',
+  masterAction:{reasonCode:'06',plan:'일괄 생성',status:'IN_PROGRESS'},
+  partnerAction:{reasonCode:'06',plan:'거래처 일괄 요청',status:'IN_PROGRESS'}})],
+ actions:[a('Q|||1',{reasonCode:'',plan:'',status:'TODO',
+  partnerAction:{reasonCode:'04',plan:'실제 업체 수정',status:'IN_PROGRESS',editedFields:['reasonCode','plan','status']}})]});
+if(editedHistory.stats.total!==1||editedHistory.stats.recorded!==1||
+ editedHistory.stats.actualRecorded!==1||editedHistory.stats.bulkOnly!==0||
+ editedHistory.stats.partner!==1||editedHistory.stats.progress!==1||
+ !editedHistory.records[0].recordSource.includes('업체 현재 저장값')||
+ editedHistory.records[0].nextAction!=='실제 업체 수정')
+ fail('A saved Partner edit must override derived historical defaults in SRM without duplicating the merchant');
 console.log('PASS SRM METRICS: no fabricated action/ERP claims, no deadline, verified DCM vs actual completed, live editing evidence preserved');
