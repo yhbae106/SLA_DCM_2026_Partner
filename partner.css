@@ -35,7 +35,7 @@
 #action .dual-partner .action-field.plan{min-width:0}
 #action .dual-partner .action-field.pending{border:2px solid #e8a336}
 #action .pending-indicator{font-size:9px;color:#a76310}
-#action .table-wrap table{min-width:1200px}
+#action .table-wrap table{min-width:0;width:100%;max-width:100%}
 
 /* Save-to-master visible near Action Board title */
 #saveToMasterBtn{background:#1474d4;color:#fff;font-weight:800;border:1px solid #1474d4;min-width:188px}
@@ -71,8 +71,8 @@
 .risk-guide summary{display:inline-block;cursor:pointer;color:#426c9e;font-weight:700;list-style:none}
 .risk-guide summary:before{content:'ⓘ ';font-weight:700}
 .risk-guide p{margin:6px 0;padding:8px 10px;background:#f5f8fc;border-radius:6px;line-height:1.5}
-#action .table-wrap{max-height:min(66vh,720px);overflow:auto;overscroll-behavior:contain;scrollbar-color:#c5d5e8 #f5f8fc}
-#action .table-wrap table{min-width:1410px;border-collapse:separate;border-spacing:0;table-layout:auto}
+#action .table-wrap{max-height:min(66vh,720px);overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;scrollbar-color:#c5d5e8 #f5f8fc}
+#action .table-wrap table{width:100%;min-width:0;max-width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed}
 #action .table-wrap th{position:sticky;top:0;z-index:3;background:#edf2f9;white-space:nowrap;box-shadow:0 1px 0 #d7e2ef;font-size:10px}
 #action .table-wrap td{vertical-align:middle;font-size:10.5px;background:#fff}
 #action .table-wrap tr:hover td{background:#f8fbff}
@@ -103,3 +103,38 @@
 #action .dual-action-cell input,#action .dual-action-cell select{width:100%;min-width:0;max-width:100%;box-sizing:border-box}
 #action .dual-master span,#action .readonly-action{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;white-space:normal;overflow-wrap:anywhere;line-height:1.5}
 @media(max-width:650px){#action .table-wrap .name-col{left:0;min-width:185px;width:185px;max-width:185px}}
+
+/* Partner Action Board: all nine columns visible without horizontal scrollbar. */
+#action .table-wrap{overflow-x:hidden;overflow-y:auto;}
+#action .table-wrap table{width:100%;min-width:0;max-width:100%;table-layout:fixed;}
+#action .table-wrap th,#action .table-wrap td{min-width:0;max-width:none;box-sizing:border-box;padding:8px 5px;white-space:normal;overflow-wrap:anywhere;word-break:normal;}
+#action .table-wrap th{line-height:1.4;vertical-align:middle;}
+#action .table-wrap th:nth-child(1){width:18%;}
+#action .table-wrap th:nth-child(2){width:9%;}
+#action .table-wrap th:nth-child(3),#action .table-wrap th:nth-child(4),#action .table-wrap th:nth-child(5){width:5%;}
+#action .table-wrap th:nth-child(6){width:8%;}
+#action .table-wrap th:nth-child(7){width:17%;}
+#action .table-wrap th:nth-child(8){width:22%;}
+#action .table-wrap th:nth-child(9){width:11%;}
+#action .table-wrap .name-col{min-width:0;max-width:none;width:auto;}
+#action .table-wrap .status-cell{min-width:0;padding:7px 4px;text-align:center;}
+#action .table-wrap .dual-action-cell{min-width:0;max-width:none;width:auto;vertical-align:top;padding:6px 4px;}
+#action .dual-master,#action .dual-partner{min-width:0;max-width:100%;box-sizing:border-box;padding:6px;}
+#action .dual-partner .action-field{width:100%;min-width:0;max-width:100%;box-sizing:border-box;}
+#action .name-col strong{max-width:none;}
+/* When a device is too narrow for a readable table, stack every column into a labeled card. */
+@media(max-width:1180px){
+  #action .table-wrap{overflow-x:hidden;overflow-y:auto;}
+  #action .table-wrap table,#action .table-wrap tbody{display:block;width:100%;min-width:0;max-width:100%;}
+  #action .table-wrap thead{display:none;}
+  #action .table-wrap tbody tr{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;margin:9px 7px;padding:11px;border:1px solid #dce7f2;border-radius:10px;background:#fff;}
+  #action .table-wrap tbody td{display:block;position:static!important;left:auto!important;z-index:auto!important;grid-column:1/-1;width:auto!important;min-width:0!important;max-width:none!important;padding:5px!important;border:0!important;background:transparent!important;text-align:left;}
+  #action .table-wrap tbody td:before{content:attr(data-label);display:block;margin:0 0 4px;font-size:10px;font-weight:850;color:#6a7d94;}
+  #action .table-wrap tbody td:nth-child(3),#action .table-wrap tbody td:nth-child(4),#action .table-wrap tbody td:nth-child(5){grid-column:span 2;}
+  #action .table-wrap tbody td:nth-child(7),#action .table-wrap tbody td:nth-child(8){grid-column:span 3;}
+  #action .table-wrap tbody td:first-child:before{display:none;}
+  #action .table-wrap .dual-action-cell{padding:4px!important;}
+}
+@media(max-width:630px){
+  #action .table-wrap tbody td:nth-child(7),#action .table-wrap tbody td:nth-child(8){grid-column:1/-1;}
+}
