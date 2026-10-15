@@ -285,6 +285,21 @@ function setActionView(view,{scroll=true,kpi=null}={}){
   renderAction();
   if(scroll)document.getElementById('action')?.scrollIntoView({behavior:'smooth',block:'start'});
 }
+function chooseActionBase(value){
+ actionBase=value==='x'?'x':'supplied';
+ actionDetail='all';actionView=actionBase;
+ if($('actionView'))$('actionView').value=actionBase;
+ if($('actionDetail'))$('actionDetail').value='all';
+ activeKpi=null;actionLimit=30;renderAction();
+}
+function chooseActionDetail(value){
+ actionDetail=DETAIL_VIEWS.includes(value)?value:'all';
+ if(actionDetail!=='all')actionBase='supplied';
+ actionView=actionDetail==='all'?actionBase:actionDetail;
+ if($('actionView'))$('actionView').value=actionBase;
+ if($('actionDetail'))$('actionDetail').value=actionDetail;
+ activeKpi=null;actionLimit=30;renderAction();
+}
 function updateKpiSelection(){
   document.querySelectorAll('.kpi[data-kpi]').forEach(card=>{
     const chosen=card.dataset.kpi===activeKpi;
@@ -465,19 +480,8 @@ function start(){
   const resetContext=()=>{actionLimit=30;render();};
   $('outlet').addEventListener('change',resetContext);
   $('month').addEventListener('change',resetContext);
-  $('actionView').addEventListener('change',ev=>{
-    actionBase=ev.target.value==='x'?'x':'supplied';
-    actionDetail='all';actionView=actionBase;
-    if($('actionDetail'))$('actionDetail').value='all';
-    activeKpi=null;actionLimit=30;renderAction();
-  });
-  $('actionDetail').addEventListener('change',ev=>{
-    actionDetail=DETAIL_VIEWS.includes(ev.target.value)?ev.target.value:'all';
-    if(actionDetail!=='all')actionBase='supplied';
-    actionView=actionDetail==='all'?actionBase:actionDetail;
-    if($('actionView'))$('actionView').value=actionBase;
-    activeKpi=null;actionLimit=30;renderAction();
-  });
+  $('actionView').addEventListener('change',ev=>chooseActionBase(ev.target.value));
+  $('actionDetail').addEventListener('change',ev=>chooseActionDetail(ev.target.value));
   $('actionSearch').addEventListener('input',ev=>{actionSearch=ev.target.value;activeKpi=null;actionLimit=30;renderAction();});
   $('actionFilterReset').addEventListener('click',()=>setActionView('supplied',{scroll:false}));
   $('actionMore').addEventListener('click',()=>{actionLimit+=50;renderAction();});
