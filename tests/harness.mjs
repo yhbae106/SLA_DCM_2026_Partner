@@ -103,7 +103,7 @@ if(!partnerJs.includes("E.map(status).join('')")||!partnerJs.includes('aria-pres
 ok('duplicate X table removed, 3-company O/X visible, keyboard KPI cards');
 const hook="if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();";
 if(!partnerJs.includes(hook))fail('Partner test hook marker missing');
-const withTest=partnerJs.replace(hook,"window.__overrideTest={setPartner:p=>{partner=p},setPassword:p=>{password=p},setData:d=>{data=d;historyCache.clear()},mockRequest:f=>{request=f},disableRender:()=>{render=()=>{};pullSharedActions=async()=>{}},getPending:pendingChanges,savePendingActions,applyShared,savePartnerOverride,actionFor,risks,buildActionContext,filterActionRows,setActionView,getView:()=>actionView,setActionContext:c=>{actionContext=c},renderAction,reset:()=>{localStorage.setItem(overrideKey(),'{}');actionOverrides={};rebuildActions()}};"+hook);
+const withTest=partnerJs.replace(hook,"window.__overrideTest={setPartner:p=>{partner=p},setPassword:p=>{password=p},setData:d=>{data=d;historyCache.clear()},mockRequest:f=>{request=f},disableRender:()=>{render=()=>{};pullSharedActions=async()=>{}},getPending:pendingChanges,savePendingActions,applyShared,savePartnerOverride,actionFor,risks,buildActionContext,filterActionRows,setActionView,chooseActionBase,chooseActionDetail,getSelection:()=>({base:actionBase,detail:actionDetail,view:actionView}),getView:()=>actionView,setActionContext:c=>{actionContext=c},renderAction,reset:()=>{localStorage.setItem(overrideKey(),'{}');actionOverrides={};rebuildActions()}};"+hook);
 const store=()=>{const m=new Map();return {getItem:k=>m.has(k)?m.get(k):null,setItem:(k,v)=>m.set(k,String(v)),removeItem:k=>m.delete(k)}};
 const ls=store(),sess=store();
 const sandbox={window:{DCMLogic:L},document:{readyState:'loading',addEventListener(){},getElementById(){return null}},localStorage:ls,sessionStorage:sess,console:{warn(){}}};
@@ -201,10 +201,38 @@ for(const id of ['actionBody','actionFilterCount','actionViewTitle','actionShown
   uiElements.set(id,{innerHTML:'',textContent:'',hidden:false});
 }
 uiElements.set('month',{value:'2026-09'});
+uiElements.set('actionView',{value:'supplied'});
+uiElements.set('actionDetail',{value:'all'});
+uiElements.set('actionSearch',{value:''});
 sandbox.document.getElementById=id=>uiElements.get(id)||null;
 sandbox.document.querySelectorAll=()=>[];
 test.setActionContext(context);
+test.setActionView('x',{scroll:false});
+if(JSON.stringify(test.getSelection())!==JSON.stringify({base:'x',detail:'all',view:'x'}))fail('Partner base filter did not select only unlinked merchants');
+test.chooseActionDetail('improved');
+if(JSON.stringify(test.getSelection())!==JSON.stringify({base:'supplied',detail:'improved',view:'improved'})||
+ uiElements.get('actionView').value!=='supplied'||uiElements.get('actionDetail').value!=='improved'||
+ !uiElements.get('actionFilterCount').textContent.startsWith('2처'))
+ fail('Selecting an improvement detail must clear the X-only base filter and retain 2 improved merchants');
+test.chooseActionBase('x');
+if(JSON.stringify(test.getSelection())!==JSON.stringify({base:'x',detail:'all',view:'x'})||
+ uiElements.get('actionDetail').value!=='all')
+ fail('Selecting a new base filter must reset the incompatible detail condition');
+test.chooseActionDetail('all');
+if(test.getSelection().base!=='x'||test.getSelection().view!=='x')
+ fail('Selecting all details should preserve base X selection');
+test.chooseActionDetail('stopped');
+if(test.getSelection().base!=='supplied'||test.getSelection().detail!=='stopped'||
+ uiElements.get('actionView').value!=='supplied')
+ fail('Supply-stop filter must not be accidentally intersected with current-X merchants');
+test.setActionView('persist',{scroll:false});
+if(test.getSelection().base!=='supplied'||test.getSelection().detail!=='persist'||
+ uiElements.get('actionFilterCount').textContent.indexOf('1처')!==0)
+ fail('Persist-X KPI drilldown did not populate the new detail filter');
 test.setActionView('supplied',{scroll:false});
+if(test.getSelection().base!=='supplied'||test.getSelection().detail!=='all'||
+ !uiElements.get('actionFilterCount').textContent.startsWith('4처'))
+ fail('Reset/full-supply view lost expected merchant total');
 const tableHtml=uiElements.get('actionBody').innerHTML;
 const renderedRows=tableHtml.match(/<tr\b[^>]*>[\s\S]*?<\/tr>/g)||[];
 if(!renderedRows.length||renderedRows.some(row=>(row.match(/<td\b/g)||[]).length!==9))fail('Partner table did not render 9 aligned columns');
