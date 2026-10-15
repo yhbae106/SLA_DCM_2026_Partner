@@ -5,6 +5,9 @@ const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const isPartner=()=>!!window.DCMPartnerSRM;
 const source=()=>isPartner()?window.DCMPartnerSRM?.rows()||[]:window.DCMActionSync?.srmRows()||[];
 const actionRows=()=>isPartner()?window.DCMPartnerSRM?.actionRows?.()||[]:window.DCMActionSync?.srmActions?.()||[];
+// One display-state resolver for the same month and same board scope.
+const displayedRows=()=>isPartner()?window.DCMPartnerSRM?.viewRows?.()??null:
+ window.DCMUnifiedAction?.viewRows?.()??null;
 const request=x=>isPartner()?window.DCMPartnerSRM?.request(x):window.DCMActionSync?.srmRequest(x);
 const canHistory=()=>isPartner()?
  !!(window.DCMPartnerSRM?.isAuthenticated?.()??window.DCMPartnerSRM?.name?.()):
@@ -40,17 +43,17 @@ function render(){
  if(raw.length)archive?.refresh?.(raw);
  const result=window.DCMSRMAggregate?.build({
   actions:actionRows(),history:archive?.forMonth?.(month)||[],events:ready?events:[],
-  month,latestMonth:monthList[monthList.length-1]||month
+  month,latestMonth:monthList[monthList.length-1]||month,viewRows:displayedRows()
  })||{stats:{},records:[]};
  const stats=result.stats,records=result.records,loaded=raw.length>0;
  const values={srmManaged:stats.total,srmConsulted:stats.recorded,srmNeedsAction:stats.needsAction,
-  srmOpen:stats.progress,srmDone:stats.done,srmVerified:stats.verified};
+  srmOpen:stats.displayProgress,srmDone:stats.displayDone,srmVerified:stats.verified};
  for(const [id,value] of Object.entries(values)){
   const el=$(id);if(el)el.textContent=loaded?Number(value||0).toLocaleString():'—';
  }
  const match=r=>filter==='all'||filter==='recorded'&&r.recorded||
-  filter==='open'&&r.needsAction||filter==='progress'&&r.progress||
-  filter==='done'&&r.done||filter==='verified'&&r.verified||
+  filter==='open'&&r.needsAction||filter==='progress'&&r.displayProgress||
+  filter==='done'&&r.displayDone||filter==='verified'&&r.verified||
   filter==='consulted'&&r.events.length>0;
  const shown=records.filter(match),byKey=new Map(raw.filter(r=>r.month===month)
   .map(r=>[r.outlet+'|||'+r.businessNo,r]));
@@ -73,7 +76,9 @@ function render(){
  )+'</td></tr>';
  if($('srmSourceNote'))$('srmSourceNote').textContent=
   '조치 이력 '+(stats.recorded||0)+'처 = 일괄기재만 '+(stats.bulkOnly||0)+'처 + 실제 마스터·업체 입력/추가 협의 '+(stats.actualRecorded||0)+'처 (거래처 중복 제외). '+
-  '일괄기재는 실제 실행 증빙이 아니며, 조치 내용 입력 자체를 조치 완료로 계산하지 않습니다.'+
+  '진행중 표시 '+(stats.displayProgress||0)+'처(실제 입력 기준 진행 '+(stats.progress||0)+'처, 일괄/표시만 '+(stats.projectedProgress||0)+'처). '+
+  '완료 표시 '+(stats.displayDone||0)+'처(실제 확인 '+(stats.done||0)+'처, 표시만 '+(stats.projectedDone||0)+'처). '+
+  '위 두 상태 숫자는 통합 ACTION BOARD에 보이는 상태 기준입니다. 일괄기재만으로 실제 실행·완료를 인정하지 않습니다.'+
   (ready?'':' · 추가 SRM 협의 기록 미조회'+(canHistory()?'':'(공용 로그인 후 확인 가능)'))+
   (shown.length>150?' · 첫 150처 표시':'');
  syncHistoryUI();
@@ -220,13 +225,13 @@ function mount(){
  '<div>관리 대상<b id="srmManaged">—</b></div>'+
  '<div>조치 이력 있음<b id="srmConsulted">—</b></div>'+
  '<div>확인·조치 필요<b id="srmNeedsAction">—</b></div>'+
- '<div>조치 진행<b id="srmOpen">—</b></div>'+
- '<div>조치 완료<b id="srmDone">—</b></div>'+
+ '<div title="통합 Action Board에 진행중/회신대기로 표시된 거래처(일괄기재 포함)">표시 진행중<b id="srmOpen">—</b></div>'+
+ '<div title="통합 Action Board에서 완료로 표시된 거래처. 일괄기재는 실제 완료 증빙이 아닙니다.">표시 완료<b id="srmDone">—</b></div>'+
  '<div>DCM X→O 개선<b id="srmVerified">—</b></div></div>'+
  '<div class="srm-head"><label>거래처 상태 <select id="srmFilter">'+
  '<option value="all">전체</option><option value="recorded">조치 이력 있음</option>'+
- '<option value="open">확인·조치 필요</option><option value="progress">조치 진행</option>'+
- '<option value="done">조치 완료</option><option value="verified">DCM X→O 개선</option>'+
+ '<option value="open">확인·조치 필요</option><option value="progress">표시 진행중</option>'+
+ '<option value="done">표시 완료</option><option value="verified">DCM X→O 개선</option>'+
  '<option value="consulted">추가 협의 기록</option></select></label><span id="srmCount"></span></div>'+
  '<div class="srm-table"><table><thead><tr><th>거래처</th><th>3사 O/X</th>'+
  '<th>조치 이력</th><th>관리 상태</th><th>다음 조치</th></tr></thead>'+
