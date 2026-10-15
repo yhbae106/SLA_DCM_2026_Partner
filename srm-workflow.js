@@ -83,7 +83,7 @@ async function refresh(){
  if(!canHistory()){
   ready=false;events=[];
   render();
-  show('기본 조치 이력은 ACTION BOARD 입력에서 표시합니다. 추가 협의 이력은 공용 Sync 또는 파트너 로그인 후 조회할 수 있습니다.');
+  show('');
   return false;
  }
  const ticket=++generation;loading=true;
@@ -93,8 +93,7 @@ async function refresh(){
   if(!response?.ok)throw Error(response?.error||'SRM 조회 실패');
   if(ticket!==generation||!canHistory())return false;
   events=Array.isArray(response.events)?response.events:[];ready=true;
-  render();show('추가 협의 기록 '+events.length+'건 동기화 완료'+
-   (response.hasMore?' · 서버 최근 1000건 기준':''));
+  render();show(events.length?'추가 협의 이력 '+events.length+'건 조회 완료':'');
   if(selected)history();
   return true;
  }catch(e){
@@ -204,7 +203,7 @@ function authChanged(){
   generation++;loading=false;ready=false;events=[];
   if($('srmEditor'))$('srmEditor').hidden=true;
   render();
-  show('기본 ACTION BOARD 조치 이력은 유지됩니다. 별도 협의 이력은 로그인 후 자동으로 조회합니다.');
+  show('');
  }else{
   render();
   if(!ready&&!loading)void refresh();
@@ -217,12 +216,12 @@ function mount(){
  '<p>거래처별 조치 현황과 DCM 연동 개선 결과를 확인할 수 있습니다.</p></div>'+
  '<button id="srmRefresh" type="button">로그인 후 추가 이력</button></div>'+
  '<div class="srm-metrics">'+
- '<div>관리 대상<b id="srmManaged">—</b></div>'+
- '<div>진행중<b id="srmOpen">—</b></div>'+
- '<div>완료<b id="srmDone">—</b></div>'+
- '<div>확인·조치 필요<b id="srmNeedsAction">—</b></div>'+
- '<div>DCM X→O 개선<b id="srmVerified">—</b></div>'+
- '<div>조치 이력 있음<b id="srmConsulted">—</b></div></div>'+
+ '<div role="button" tabindex="0" data-srm-filter="all" aria-label="관리 대상 거래처 조회">관리 대상<b id="srmManaged">—</b></div>'+
+ '<div role="button" tabindex="0" data-srm-filter="progress" aria-label="진행중 거래처 조회">진행중<b id="srmOpen">—</b></div>'+
+ '<div role="button" tabindex="0" data-srm-filter="done" aria-label="완료 거래처 조회">완료<b id="srmDone">—</b></div>'+
+ '<div role="button" tabindex="0" data-srm-filter="open" aria-label="확인·조치 필요 거래처 조회">확인·조치 필요<b id="srmNeedsAction">—</b></div>'+
+ '<div role="button" tabindex="0" data-srm-filter="verified" aria-label="DCM X→O 개선 거래처 조회">DCM X→O 개선<b id="srmVerified">—</b></div>'+
+ '<div role="button" tabindex="0" data-srm-filter="recorded" aria-label="조치 이력 있음 거래처 조회">조치 이력 있음<b id="srmConsulted">—</b></div></div>'+
  '<div class="srm-head"><label>거래처 상태 <select id="srmFilter">'+
  '<option value="all">전체</option><option value="recorded">조치 이력 있음</option>'+
  '<option value="open">확인·조치 필요</option><option value="progress">진행중</option>'+
@@ -268,6 +267,9 @@ function mount(){
  .srm-metrics{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:9px;margin:12px 0}
  .srm-metrics>div{padding:12px;border-radius:9px;background:#f1f6fc;font-size:11px;color:#57728c}
  .srm-metrics>div:first-child{background:#eaf2fd}
+ .srm-metrics>div[data-srm-filter]{cursor:pointer;transition:background-color .14s ease}
+ .srm-metrics>div[data-srm-filter]:hover,.srm-metrics>div[data-srm-filter].srm-active{background:#e4effd}
+ .srm-metrics>div[data-srm-filter]:focus-visible{outline:2px solid #176acb;outline-offset:2px}
  .srm-metrics>div:nth-child(2),.srm-metrics>div:nth-child(4){border-left:2px solid #c3d7ee}
  .srm-message:empty{display:none}
  .srm-metrics b{display:block;margin-top:7px;font-size:24px;color:#155d9f}
@@ -309,7 +311,23 @@ function mount(){
  `;
  document.head.appendChild(st);
  $('srmRefresh').onclick=()=>void refresh();
- $('srmFilter').onchange=e=>{filter=e.target.value;render();};
+ const selectFilter=value=>{
+  filter=value;
+  if($('srmFilter'))$('srmFilter').value=value;
+  root.querySelectorAll?.('[data-srm-filter]').forEach(card=>{
+   const active=card.dataset.srmFilter===value;
+   card.classList.toggle('srm-active',active);
+   card.setAttribute('aria-pressed',active?'true':'false');
+  });
+  render();
+ };
+ $('srmFilter').onchange=e=>selectFilter(e.target.value);
+ root.querySelectorAll?.('[data-srm-filter]').forEach(card=>{
+  card.addEventListener('click',()=>selectFilter(card.dataset.srmFilter));
+  card.addEventListener('keydown',e=>{
+   if(e.key==='Enter'||e.key===' '){e.preventDefault();selectFilter(card.dataset.srmFilter);}
+  });
+ });
  $('srmClose').onclick=()=>{$('srmEditor').hidden=true;selected='';};
  $('srmEntity').onchange=e=>{entity=E.includes(e.target.value)?e.target.value:E[0];history();};
  $('srm-kind').onchange=updateForm;
@@ -328,7 +346,7 @@ function mount(){
  });
  render();
  if(canHistory())void refresh();
- else show('ACTION BOARD 조치 이력은 표시 중입니다. 추가 협의 기록은 로그인 후 자동으로 조회합니다.');
+ else show('');
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount,{once:true});else mount();
 window.DCMSRM={open,refresh,update:render};
