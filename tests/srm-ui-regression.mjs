@@ -22,7 +22,7 @@ const edits=[
   partnerAction:{plan:'업체 단독 조치 내용',status:'TODO',editedFields:['plan']}}
 ];
 async function verify(partner){
- let authenticated=false,requests=0;
+ let authenticated=false,requests=0;const payloads=[];
  const listeners=new Map(),nodes=new Map(),css=[];
  let mounted=false;
  const host={insertBefore(){mounted=true;},appendChild(){mounted=true;}};
@@ -46,7 +46,7 @@ async function verify(partner){
  };
  const response={ok:true,events:[{key:'RETRO|||1',entity:'대웅제약',
   status:'ERP_WAIT',contactTarget:'ERP 업체',erpVendor:'확인된 업체',nextAction:'재시험 요청'}]};
- const fetcher=async()=>{requests++;return response;};
+ const fetcher=async payload=>{requests++;payloads.push(payload);return payload.type==='srmAppend'?{ok:true,saved:true}:response;};
  const ctx={document:doc,console,localStorage:{getItem(){return null;},setItem(){},removeItem(){}},
   addEventListener(name,fn){listeners.set(name,fn);},
   setTimeout(){},clearTimeout(){}};
@@ -117,6 +117,29 @@ async function verify(partner){
  assert.match(body.innerHTML,/재시험 요청/);
  element('srmFilter').onchange({target:{value:'all'}});
  validateRows(41);
+
+ // A short optional SRM event must save without re-entering Action reasons/plans.
+ ctx.DCMSRM.open('RETRO|||0','대웅제약');
+ element('srm-kind').value='contact';
+ element('srm-contactTarget').value='ERP 업체';
+ element('srm-erpVendor').value='확인된 ERP 서비스';
+ element('srm-detail').value='실제 업체 담당자와 시스템 접속 점검';
+ element('srm-nextAction').value='';
+ await element('srmForm').onsubmit({preventDefault(){}});
+ const append=payloads.find(p=>p.type==='srmAppend');
+ assert.ok(append,'Optional SRM entry was not saved to the authenticated adapter');
+ for(const [key,value] of Object.entries({status:'CHECKING',eventType:'CONTACT',
+   detail:'실제 업체 담당자와 시스템 접속 점검',contactTarget:'ERP 업체',
+   erpVendor:'확인된 ERP 서비스',reason:'',owner:''})){
+  assert.equal(append[key],value,'Unexpected supplementary SRM field '+key);
+ }
+ assert.ok(!Object.hasOwn(append,'dueDate'),'Retired date must not be sent');
+ element('srm-kind').value='verify';
+ element('srm-baselineMonth').value='2026-06';
+ const count=requests;
+ await element('srmForm').onsubmit({preventDefault(){}});
+ assert.equal(requests,count,'X-to-O verification with no later O must be blocked before server save');
+ assert.match(element('srmMsg').textContent,/검증 실패/);
 
  // Closing the authenticated session must discard supplementary SRM data,
  // but retain Action Board entries visible in the current browser dataset.
