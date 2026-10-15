@@ -130,7 +130,7 @@ async function verify(partner){
  await ctx.DCMSRM.refresh();
  assert.equal(requests,0,'Unauthorized extra history request must never hit Apps Script');
  assert.doesNotMatch(element('srmMsg').textContent,/공유키를 입력해 주세요|서버 연결 또는 Apps Script 배포 확인 필요/);
- assert.match(element('srmMsg').textContent,/로그인 후 조회/);
+ assert.equal(element('srmMsg').textContent,'','No idle login instructions clutter the Partner SRM table');
  assert.equal(element('srmConsulted').textContent,'41');
 
  authenticated=true;
