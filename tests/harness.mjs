@@ -134,6 +134,8 @@ test.setPartner('백제약품');test.setPassword('test-only');test.setData([{out
 let outbound=[];
 test.mockRequest(async payload=>{outbound.push(payload);if(payload.type==='partnerSaveActions')return {ok:true,results:payload.changes.map(x=>({...x,updatedAt:'2026-10-08T16:00:00+09:00',modifiedBy:'업체:백제약품'}))};return {ok:true,actions:[]};});
 test.applyShared({actions:[original]});
+test.savePartnerOverride(k,'dueDate','2026-12-01');
+if(test.getPending().some(change=>change.field==='dueDate'))fail('Retired dueDate must never be staged for saving');
 test.savePartnerOverride(k,'plan','STAGED PARTNER PLAN');
 test.savePartnerOverride(k,'status','DONE');
 if(outbound.length)fail('Save happened automatically before Save to Master click');
@@ -196,14 +198,14 @@ test.setActionView('supplied',{scroll:false});
 const tableHtml=uiElements.get('actionBody').innerHTML;
 const renderedRows=tableHtml.match(/<tr\b[^>]*>[\s\S]*?<\/tr>/g)||[];
 if(!renderedRows.length||renderedRows.some(row=>(row.match(/<td\b/g)||[]).length!==9))fail('Partner table did not render 9 aligned columns');
-if(/data-field="dueDate"/.test(tableHtml))fail('Due date must not render, even while persisted');
+if(/data-field="dueDate"/.test(tableHtml)||/\b\d{4}-\d{2}-\d{2}\b/.test(tableHtml))fail('Retired due date must not appear in action rows');
+if(partnerJs.includes("'마스터 Due':")||partnerJs.includes("'업체 Due':")||partnerJs.includes("'Due':"))fail('Due date columns must not be exported');
 if(!tableHtml.includes('data-label="조치계획"'))fail('Partner card field labels missing');
 if(/score-col|priority-col/.test(tableHtml))fail('Partner scoring columns reappeared');
 if(!tableHtml.includes('월별 X→O 조치 이력')||
  !tableHtml.includes('ERP업체 소통하여 정상 연동 조치')||
- !tableHtml.includes('거래처 요청 및 대웅 협조')||
- !tableHtml.includes('2026-09-30'))
- fail('Partner historical Master/Partner cause, plan, Due and completed state not rendered');
+ !tableHtml.includes('거래처 요청 및 대웅 협조'))
+ fail('Partner historical Master/Partner cause, plan and completed state not rendered');
 if(!tableHtml.includes('status-o')||!tableHtml.includes('status-x')||!tableHtml.includes('status-na'))
   fail('Rendered Action rows do not show all O/X/unassessed status chips');
 if(!tableHtml.includes('readonly-action'))
@@ -229,12 +231,12 @@ const stopHtml=uiElements.get('actionBody').innerHTML;
 if(!stopHtml.includes('공급 중단(사후 관리 분류)')||
  !stopHtml.includes('04 거래처 연동 거부/미협조')||
  !stopHtml.includes('공급 중단')||
- !stopHtml.includes('2026-07-31')||
- !stopHtml.includes('완료'))
+ !stopHtml.includes('완료')||
+ stopHtml.includes('2026-07-31'))
  fail('Partner-only July supply-stop closure must display correctly in monthly view');
 if(stopHtml.includes('ERP업체 소통하여 정상 연동 조치'))
  fail('Master plan must not be populated for supply-stop cases');
-ok('Partner July no-sales absent merchant synthetic row, 04 cause, plan, Due, DONE and Master unaffected');
+ok('Partner July stopped merchant: cause/plan/status visible, archival due date preserved but hidden');
 
 
 console.log('HARNESS_OK');
