@@ -38,8 +38,9 @@ ok('SheetJS is lazy-loaded');
 for(const p of ['app.js','data/base-data.js','dw-illustration.svg','partner-upload-v2.js','styles.css'])if(exists(p))fail('Legacy unused asset returned: '+p);
 ok('legacy unused assets remain removed');
 
-const required=['partnerLogin','loginPartner','loginPassword','loginBtn','outlet','month','rate','actionBody','exportAction','actionView','actionEntity','actionSearch','actionFilterReset','actionFilterCount','actionViewTitle'];
+const required=['partnerLogin','loginPartner','loginPassword','loginBtn','outlet','month','rate','actionBody','exportAction','actionView','actionDetail','actionSearch','actionFilterReset','actionFilterCount','actionViewTitle'];
 for(const id of required)if(!html.includes('id="'+id+'"'))fail('Missing required DOM id: '+id);
+if(html.includes('id="actionEntity"'))fail('Redundant Action Board group-company filter returned');
 ok('required partner DOM contract');
 const actionHeader=html.match(/<div class="table-wrap"><table><thead><tr>(.*?)<\/tr>/)?.[1]||'';
 if((actionHeader.match(/<th/g)||[]).length!==9||actionHeader.includes('완료 예정일'))fail('Partner Action Board must have exactly nine visible columns without due date');
