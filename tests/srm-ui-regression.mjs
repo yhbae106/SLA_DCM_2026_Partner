@@ -74,7 +74,7 @@ async function verify(partner){
  assert.equal(element('srmManaged').textContent,'41');
  assert.equal(element('srmConsulted').textContent,'41','Bulk-entered historical notes are visibly recorded without being completed');
  assert.equal(element('srmNeedsAction').textContent,'41');
- assert.equal(element('srmOpen').textContent,'0');
+ assert.equal(element('srmOpen').textContent,'41','All 41 bulk-visible IN_PROGRESS cases must be counted once');
  assert.equal(element('srmDone').textContent,'0');
  assert.equal(element('srmVerified').textContent,'0');
  assert.match(element('srmSourceNote').textContent,/조치 이력 41처/);
@@ -108,13 +108,17 @@ async function verify(partner){
  assert.equal(requests,1);
  assert.equal(element('srmRefresh').disabled,false);
  assert.equal(element('srmConsulted').textContent,'41','Real ERP event updates actual count but not overall bulk-record count');
- assert.equal(element('srmOpen').textContent,'1');
+ assert.equal(element('srmOpen').textContent,'41','Adding one ERP event must not double-count an already visible progress case');
  assert.equal(element('srmDone').textContent,'0');
  assert.doesNotMatch(element('srmSourceNote').textContent,/미조회/);
  validateRows(41);
  element('srmFilter').onchange({target:{value:'recorded'}});
  validateRows(41);
  assert.match(element('srmCount').textContent,/41처 \/ 관리 41처/);
+ element('srmFilter').onchange({target:{value:'progress'}});
+ assert.equal(element('srmOpen').textContent,'41');
+ assert.match(element('srmCount').textContent,/41처 \/ 관리 41처/);
+ validateRows(41);
  element('srmFilter').onchange({target:{value:'consulted'}});
  validateRows(1);
  assert.match(body.innerHTML,/재시험 요청/);
