@@ -308,7 +308,7 @@ function actionFieldCell(a,k,field,canEdit=true){
   let input='';
   if(!canEdit){const raw=field==='reasonCode'?(v.partnerValue?esc(v.partnerValue+' '+(reasons[v.partnerValue]||'')):'미입력'):
     field==='status'?(v.partnerValue?esc(statusLabel(v.partnerValue)):'미입력'):esc(v.partnerValue||'미입력');
-    input='<span class="readonly-action" title="'+(a.monthlyHistorical?'월별 실적 기준 사후 정리 이력: 현재 Action Board 원본과 별도 저장':'현재 X가 없는 신규 거래처는 조회 전용입니다.')+'">'+raw+'</span>';
+    input='<span class="readonly-action" title="'+(a.monthlyHistorical?'기존 조치 내용':'현재 X가 없는 신규 거래처는 조회 전용입니다.')+'">'+raw+'</span>';
   }else if(field==='reasonCode'){
     const opts=Object.entries(reasons).map(([c,label])=>`<option value="${esc(c)}" ${v.partnerValue===c?'selected':''}>${esc(c)} ${esc(label)}</option>`).join('');
     input=`<select class="${cls}" data-field="${field}" data-key="${keyAttr}"><option value="" ${!v.partnerValue?'selected':''}>업체 미입력</option>${opts}</select>`;
@@ -330,10 +330,9 @@ function renderAction(){
       hasX=hasCurrentX(r),
       canEdit=actionIndex.has(k)||(!a.monthlyHistorical&&hasX),
       display=a.monthlyHistorical?
-       '<small class="monthly-action-marker" title="월별 실적에서 제안된 기본값입니다. 거래처 공통으로 수정·저장할 수 있으며 실제 협의 수행 여부는 별도 확인이 필요합니다.">'+
-       (window.DCM_MONTHLY_ACTION_HISTORY?.get($('month')?.value||'',k)?.type==='SUPPLY_STOP'?'공급 중단 사후분류':'월별 일괄기재')+
-       '</small>'+(canEdit?'<small class="local-action-marker">업체 입력 수정 가능</small>':'<small class="monthly-action-marker">공용 Action 미등록 · 조회 전용</small>')+(hasPartner?'<small class="local-action-marker">업체 수정값 적용됨</small>':''):
-       hasPartner?'<small class="local-action-marker">업체 입력 있음</small>':'';
+       (window.DCM_MONTHLY_ACTION_HISTORY?.get($('month')?.value||'',k)?.type==='SUPPLY_STOP'?
+        '<small class="monthly-action-marker">공급 중단</small>':''):
+       (hasPartner?'<small class="local-action-marker">업체 입력</small>':'');
     const status=e=>{
       const st=L.normStatus(r.statuses?.[e]),label=st||'—';
       return '<td class="status-cell" data-label="'+esc(e)+'"><span class="status-pill status-'+(st||'na').toLowerCase()+'" title="'+esc(e)+' '+(st==='O'?'연동':st==='X'?'미연동':'미평가')+'">'+label+'</span></td>';
