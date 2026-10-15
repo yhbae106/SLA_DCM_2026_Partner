@@ -23,7 +23,13 @@ const edits=[
 ];
 async function verify(partner){
  let authenticated=false,requests=0;const payloads=[];
- const listeners=new Map(),nodes=new Map(),css=[];
+ const listeners=new Map(),nodes=new Map(),css=[],cards=new Map();
+ const cardFor=view=>{
+  if(!cards.has(view))cards.set(view,{dataset:{srmFilter:view},listeners:new Map(),attributes:{},
+   classList:{toggle(){}},addEventListener(type,callback){this.listeners.set(type,callback)},
+   setAttribute(name,value){this.attributes[name]=value}});
+  return cards.get(view);
+ };
  let mounted=false;
  const host={insertBefore(){mounted=true;},appendChild(){mounted=true;}};
  const element=id=>{
@@ -41,7 +47,10 @@ async function verify(partner){
   getElementById:id=>id==='srmWorkflow'&&!mounted?null:element(id),
   querySelector:()=>host,addEventListener(){},
   createElement(tag){return tag==='style'?{textContent:''}:{
-   id:'',className:'',innerHTML:'',parentNode:host,querySelector:q=>element(q),insertAdjacentHTML(){}
+   id:'',className:'',innerHTML:'',parentNode:host,querySelector:q=>element(q),
+   querySelectorAll(selector){return selector==='[data-srm-filter]'?
+    [...this.innerHTML.matchAll(/data-srm-filter="([^"]+)"/g)].map(x=>cardFor(x[1])):[];},
+   insertAdjacentHTML(){}
   };}
  };
  const response={ok:true,events:[{key:'RETRO|||1',entity:'대웅제약',
@@ -83,6 +92,19 @@ async function verify(partner){
  assert.match(body.innerHTML,/마스터 입력 · 업체 입력/);
  assert.match(body.innerHTML,/data-label="관리 상태">진행중/);
  assert.match(body.innerHTML,/마스터: 마스터 조치계획 작성 \/ 업체: 업체 조치계획 작성/);
+ validateRows(41);
+ // Clicking a card and selecting the equivalent option must share one filter.
+ const progressCard=cards.get('progress'),doneCard=cards.get('done'),allCard=cards.get('all');
+ assert.equal(typeof progressCard?.listeners.get('click'),'function');
+ progressCard.listeners.get('click')();
+ assert.equal(element('srmFilter').value,'progress');
+ assert.match(element('srmCount').textContent,/41처 \/ 관리 41처/);
+ assert.equal(progressCard.attributes['aria-pressed'],'true');
+ doneCard.listeners.get('keydown')({key:'Enter',preventDefault(){}});
+ assert.equal(element('srmFilter').value,'done');
+ assert.match(element('srmCount').textContent,/0처 \/ 관리 41처/);
+ allCard.listeners.get('click')();
+ assert.equal(element('srmFilter').value,'all');
  validateRows(41);
 
  const cssText=css.join('\n');
