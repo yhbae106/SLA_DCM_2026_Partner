@@ -9,8 +9,7 @@ let partner='',password='',data=[],actions=[],remoteActions=[],actionIndex=new M
 const esc=v=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const pct=v=>v==null?'—':`${(v*100).toFixed(1)}%`,pp=v=>v==null||!Number.isFinite(v)?'—':`${v>=0?'+':''}${(v*100).toFixed(1)}%p`,key=r=>`${r.outlet}|||${r.businessNo}`;
 const monthLabel=m=>{if(!m)return '—';const [y,mm]=m.split('-');return `${y}년 ${Number(mm)}월`;};
-const EDIT_FIELDS=['reasonCode','plan','dueDate','status'];
-const VISIBLE_ACTION_FIELDS=['reasonCode','plan','status']; // Due dates remain stored, not shown in the Action Board.
+const EDIT_FIELDS=['reasonCode','plan','status'];
 function actionKey(){return `dcm-partner-master-actions::${partner}`;}
 function overrideKey(){return `dcm-partner-action-overrides-v1::${partner}`;}
 function canonicalPartnerReasonCode(code){return String(code||'')==='08'?'05':String(code||'');}
@@ -300,8 +299,6 @@ function actionFieldCell(a,k,field,canEdit=true){
     input=`<select class="${cls}" data-field="${field}" data-key="${keyAttr}"><option value="" ${!v.partnerValue?'selected':''}>업체 미입력</option>${opts}</select>`;
   }else if(field==='status'){
     input=`<select class="${cls}" data-field="${field}" data-key="${keyAttr}"><option value="" ${!v.partnerValue?'selected':''}>업체 미입력</option>${['TODO','IN_PROGRESS','WAITING','DONE'].map(code=>`<option value="${code}" ${v.partnerValue===code?'selected':''}>${statusLabel(code)}</option>`).join('')}</select>`;
-  }else if(field==='dueDate'){
-    input=`<input type="date" class="${cls}" data-field="${field}" data-key="${keyAttr}" value="${value}">`;
   }else{
     input=`<input class="${cls} plan" type="text" maxlength="3000" data-field="${field}" data-key="${keyAttr}" value="${value}" placeholder="업체 조치계획 입력">`;
   }
@@ -329,7 +326,7 @@ function renderAction(){
       '<td data-label="업체/권역">'+esc(r.outlet)+'</td>'+
       E.map(status).join('')+
       '<td data-label="미연동 기간">'+(hasX?r.streak+'개월':'—')+'</td>'+
-      VISIBLE_ACTION_FIELDS.map(f=>actionFieldCell(a,k,f,canEdit)).join('')+'</tr>';
+      EDIT_FIELDS.map(f=>actionFieldCell(a,k,f,canEdit)).join('')+'</tr>';
   }).join('')||'<tr><td colspan="9" class="empty">조건에 해당하는 거래처가 없습니다. 필터나 검색어를 변경해 주세요.</td></tr>';
   const assessed=rr.reduce((sum,r)=>sum+E.filter(e=>L.normStatus(r.statuses?.[e])).length,0),
         xs=rr.reduce((sum,r)=>sum+E.filter(e=>L.normStatus(r.statuses?.[e])==='X').length,0);
@@ -441,7 +438,7 @@ async function login(){
  finally{loginInProgress=false;$('loginBtn').disabled=false;$('loginBtn').textContent='접속하기';}
 }
 function logout(clear=true){clearInterval(actionPoll);clearInterval(dataPoll);partner='';password='';data=[];actions=[];remoteActions=[];actionIndex.clear();actionOverrides={};historyCache.clear();actionContext=null;actionView='x';actionEntity='all';actionSearch='';activeKpi=null;actionLimit=30;offlineServer=false;updateSaveButton();if($('actionView'))$('actionView').value='x';if($('actionEntity'))$('actionEntity').value='all';if($('actionSearch'))$('actionSearch').value='';if(clear){sessionStorage.removeItem(SESSION_PARTNER);sessionStorage.removeItem(SESSION_PASSWORD);}$('partnerName').textContent='-';$('partnerLogin').classList.remove('hidden-login');$('loginPassword').value='';renderEmpty();}
-async function exportActions(){const cur=$('month')?.value;if(!cur)return;try{await ensureXLSX();}catch(e){alert(e.message||e);return;}const prev=prevMonth(cur),curr=scope(cur),prior=prev?scope(prev):[],ch=L.compare(prior,curr),ctx=actionContext?.month===cur?actionContext:buildActionContext(cur,curr,prior,ch,risks(cur,curr,prior,ch)),rr=filterActionRows(ctx,actionView,actionEntity,actionSearch);const rows=rr.map(r=>{const a=actionFor(r),c=a.reasonCode||'',m=a.masterAction||a,p=a.partnerAction||{},owned=new Set(p.editedFields||[]),pv=f=>owned.has(f)?String(p[f]??''):'';return {'파트너사':partner,'기준월':cur,'업체/권역':r.outlet,'실사업자번호':r.businessNo,'실사업자명':r.businessName,'미연동 기간':hasCurrentX(r)?`${r.streak}개월`:'—','대웅제약':L.normStatus(r.statuses?.['대웅제약'])||'','대웅바이오':L.normStatus(r.statuses?.['대웅바이오'])||'','한올바이오':L.normStatus(r.statuses?.['한올바이오'])||'','원인코드':c,'원인':reasons[c]||'','조치계획':a.plan||'','Due':a.dueDate||'','상태':statusLabel(a.status||'TODO'),'마스터 원인코드':m.reasonCode||'','업체 원인코드':pv('reasonCode'),'마스터 조치계획':m.plan||'','업체 조치계획':pv('plan'),'마스터 Due':m.dueDate||'','업체 Due':pv('dueDate'),'마스터 상태':statusLabel(m.status||'TODO'),'업체 상태':pv('status')?statusLabel(pv('status')):'','업체 수정일시':p.updatedAt||''};});const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),'Action Board');XLSX.writeFile(wb,`DCM_ActionBoard_${partner}_${cur}_${actionView}.xlsx`);}
+async function exportActions(){const cur=$('month')?.value;if(!cur)return;try{await ensureXLSX();}catch(e){alert(e.message||e);return;}const prev=prevMonth(cur),curr=scope(cur),prior=prev?scope(prev):[],ch=L.compare(prior,curr),ctx=actionContext?.month===cur?actionContext:buildActionContext(cur,curr,prior,ch,risks(cur,curr,prior,ch)),rr=filterActionRows(ctx,actionView,actionEntity,actionSearch);const rows=rr.map(r=>{const a=actionFor(r),c=a.reasonCode||'',m=a.masterAction||a,p=a.partnerAction||{},owned=new Set(p.editedFields||[]),pv=f=>owned.has(f)?String(p[f]??''):'';return {'파트너사':partner,'기준월':cur,'업체/권역':r.outlet,'실사업자번호':r.businessNo,'실사업자명':r.businessName,'미연동 기간':hasCurrentX(r)?`${r.streak}개월`:'—','대웅제약':L.normStatus(r.statuses?.['대웅제약'])||'','대웅바이오':L.normStatus(r.statuses?.['대웅바이오'])||'','한올바이오':L.normStatus(r.statuses?.['한올바이오'])||'','원인코드':c,'원인':reasons[c]||'','조치계획':a.plan||'','상태':statusLabel(a.status||'TODO'),'마스터 원인코드':m.reasonCode||'','업체 원인코드':pv('reasonCode'),'마스터 조치계획':m.plan||'','업체 조치계획':pv('plan'),'마스터 상태':statusLabel(m.status||'TODO'),'업체 상태':pv('status')?statusLabel(pv('status')):'','업체 수정일시':p.updatedAt||''};});const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),'Action Board');XLSX.writeFile(wb,`DCM_ActionBoard_${partner}_${cur}_${actionView}.xlsx`);}
 function start(){
   const resetContext=()=>{actionLimit=30;render();};
   $('outlet').addEventListener('change',resetContext);
