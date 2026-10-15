@@ -74,13 +74,8 @@ function render(){
   filter==='consulted'&&!ready?'추가 협의 이력은 로그인 후 조회할 수 있습니다.':
   '선택한 조건에 해당하는 거래처가 없습니다. 다른 상태를 선택해 주세요.'
  )+'</td></tr>';
- if($('srmSourceNote'))$('srmSourceNote').textContent=
-  '조치 이력 '+(stats.recorded||0)+'처 = 일괄기재만 '+(stats.bulkOnly||0)+'처 + 실제 마스터·업체 입력/추가 협의 '+(stats.actualRecorded||0)+'처 (거래처 중복 제외). '+
-  '진행중 표시 '+(stats.displayProgress||0)+'처(실제 입력 기준 진행 '+(stats.progress||0)+'처, 일괄/표시만 '+(stats.projectedProgress||0)+'처). '+
-  '완료 표시 '+(stats.displayDone||0)+'처(실제 확인 '+(stats.done||0)+'처, 표시만 '+(stats.projectedDone||0)+'처). '+
-  '위 두 상태 숫자는 통합 ACTION BOARD에 보이는 상태 기준입니다. 일괄기재만으로 실제 실행·완료를 인정하지 않습니다.'+
-  (ready?'':' · 추가 SRM 협의 기록 미조회'+(canHistory()?'':'(공용 로그인 후 확인 가능)'))+
-  (shown.length>150?' · 첫 150처 표시':'');
+ if($('srmSourceNote'))$('srmSourceNote').textContent=shown.length>150?
+  '150처까지 표시했습니다. 거래처 상태나 검색 조건으로 나머지를 확인해 주세요.':'';
  syncHistoryUI();
 }
 async function refresh(){
@@ -219,19 +214,19 @@ function mount(){
  if($('srmWorkflow'))return;
  const root=document.createElement('section');root.id='srmWorkflow';root.className='srm-workflow';
  root.innerHTML='<div class="srm-head"><div><h2>SRM 거래처 조치 현황</h2>'+
- '<p>마스터·업체 ACTION BOARD 입력을 조치 이력으로 통합합니다. 별도 협의 기록은 선택사항입니다.</p></div>'+
+ '<p>거래처별 조치 현황과 DCM 연동 개선 결과를 확인할 수 있습니다.</p></div>'+
  '<button id="srmRefresh" type="button">로그인 후 추가 이력</button></div>'+
  '<div class="srm-metrics">'+
  '<div>관리 대상<b id="srmManaged">—</b></div>'+
- '<div>조치 이력 있음<b id="srmConsulted">—</b></div>'+
+ '<div>진행중<b id="srmOpen">—</b></div>'+
+ '<div>완료<b id="srmDone">—</b></div>'+
  '<div>확인·조치 필요<b id="srmNeedsAction">—</b></div>'+
- '<div title="통합 Action Board에 진행중/회신대기로 표시된 거래처(일괄기재 포함)">표시 진행중<b id="srmOpen">—</b></div>'+
- '<div title="통합 Action Board에서 완료로 표시된 거래처. 일괄기재는 실제 완료 증빙이 아닙니다.">표시 완료<b id="srmDone">—</b></div>'+
- '<div>DCM X→O 개선<b id="srmVerified">—</b></div></div>'+
+ '<div>DCM X→O 개선<b id="srmVerified">—</b></div>'+
+ '<div>조치 이력 있음<b id="srmConsulted">—</b></div></div>'+
  '<div class="srm-head"><label>거래처 상태 <select id="srmFilter">'+
  '<option value="all">전체</option><option value="recorded">조치 이력 있음</option>'+
- '<option value="open">확인·조치 필요</option><option value="progress">표시 진행중</option>'+
- '<option value="done">표시 완료</option><option value="verified">DCM X→O 개선</option>'+
+ '<option value="open">확인·조치 필요</option><option value="progress">진행중</option>'+
+ '<option value="done">완료</option><option value="verified">DCM X→O 개선</option>'+
  '<option value="consulted">추가 협의 기록</option></select></label><span id="srmCount"></span></div>'+
  '<div class="srm-table"><table><thead><tr><th>거래처</th><th>3사 O/X</th>'+
  '<th>조치 이력</th><th>관리 상태</th><th>다음 조치</th></tr></thead>'+
@@ -272,6 +267,9 @@ function mount(){
  .srm-workflow button:disabled{cursor:not-allowed;opacity:.58}
  .srm-metrics{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:9px;margin:12px 0}
  .srm-metrics>div{padding:12px;border-radius:9px;background:#f1f6fc;font-size:11px;color:#57728c}
+ .srm-metrics>div:first-child{background:#eaf2fd}
+ .srm-metrics>div:nth-child(2),.srm-metrics>div:nth-child(4){border-left:2px solid #c3d7ee}
+ .srm-message:empty{display:none}
  .srm-metrics b{display:block;margin-top:7px;font-size:24px;color:#155d9f}
  .srm-head select{min-height:34px;padding:4px 10px;border:1px solid #cfdded;background:#fff}
  .srm-table{width:100%;max-width:100%;max-height:370px;overflow-x:hidden;overflow-y:auto;border:1px solid #e2eaf3;border-radius:8px}
