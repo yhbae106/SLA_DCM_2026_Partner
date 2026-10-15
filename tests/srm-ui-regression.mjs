@@ -69,7 +69,8 @@ async function verify(partner){
   for(const row of body.innerHTML.match(/<tr\b[^>]*>[\s\S]*?<\/tr>/g)||[])
    assert.equal((row.match(/<td\b/g)||[]).length,5,'SRM table has only five columns');
   assert.doesNotMatch(body.innerHTML,/2026-06-30|실제 조치 완료 입증/);
-  if(count>1)assert.match(body.innerHTML,/일괄 제안: 자동 생성 업체 협의/);
+  if(count>1)assert.match(body.innerHTML,/자동 생성 업체 협의/);
+  assert.doesNotMatch(body.innerHTML,/월별 일괄기재|실행 미확인|일괄 제안:|진행중 표시|완료 표시/);
  };
  assert.equal(element('srmManaged').textContent,'41');
  assert.equal(element('srmConsulted').textContent,'41','Bulk-entered historical notes are visibly recorded without being completed');
@@ -77,12 +78,10 @@ async function verify(partner){
  assert.equal(element('srmOpen').textContent,'41','All 41 bulk-visible IN_PROGRESS cases must be counted once');
  assert.equal(element('srmDone').textContent,'0');
  assert.equal(element('srmVerified').textContent,'0');
- assert.match(element('srmSourceNote').textContent,/조치 이력 41처/);
- assert.match(element('srmSourceNote').textContent,/일괄기재만 39처/);
- assert.match(element('srmSourceNote').textContent,/실제 마스터·업체 입력\/추가 협의 2처/);
- assert.match(element('srmSourceNote').textContent,/추가 SRM 협의 기록 미조회/);
+ assert.equal(element('srmSourceNote').textContent,'','Internal diagnostic totals should not appear in the dashboard');
  assert.equal(element('srmRefresh').disabled,true);
- assert.match(body.innerHTML,/월별 일괄기재\(실행 미확인\).*마스터 입력.*업체 입력/);
+ assert.match(body.innerHTML,/마스터 입력 · 업체 입력/);
+ assert.match(body.innerHTML,/data-label="관리 상태">진행중/);
  assert.match(body.innerHTML,/마스터: 마스터 조치계획 작성 \/ 업체: 업체 조치계획 작성/);
  validateRows(41);
 
@@ -91,6 +90,15 @@ async function verify(partner){
  assert.match(cssText,/overflow-x:hidden/);
  assert.match(cssText,/@media\(max-width:920px\)/);
  assert.match(cssText,/grid-template-columns:repeat\(6,minmax\(0,1fr\)\)/);
+ let previous=-1;
+ for(const field of ['srmManaged','srmOpen','srmDone','srmNeedsAction','srmVerified','srmConsulted']){
+  const at=viewSource.indexOf('id="'+field+'"');
+  assert.ok(at>previous,'KPI cards must be adjacent in management/outcome groups: '+field);
+  previous=at;
+ }
+ assert.match(viewSource,/<option value="progress">진행중<\/option>/);
+ assert.match(viewSource,/<option value="done">완료<\/option>/);
+ assert.doesNotMatch(viewSource,/표시 진행중|표시 완료|일괄기재만|일괄\/표시만/);
  assert.doesNotMatch(viewSource,/id="srm-reason"|id="srm-owner"|srm-dueDate|srmOverdue|기한 초과/);
  for(const id of ['srm-kind','srm-detail','srm-nextAction','srm-contactTarget','srm-baselineMonth'])
   assert.match(viewSource,new RegExp('id="'+id+'"'));
@@ -110,7 +118,7 @@ async function verify(partner){
  assert.equal(element('srmConsulted').textContent,'41','Real ERP event updates actual count but not overall bulk-record count');
  assert.equal(element('srmOpen').textContent,'41','Adding one ERP event must not double-count an already visible progress case');
  assert.equal(element('srmDone').textContent,'0');
- assert.doesNotMatch(element('srmSourceNote').textContent,/미조회/);
+ assert.equal(element('srmSourceNote').textContent,'');
  validateRows(41);
  element('srmFilter').onchange({target:{value:'recorded'}});
  validateRows(41);
@@ -155,7 +163,7 @@ async function verify(partner){
  listeners.get(partner?'dcm-partner-logged-out':'dcm-sync-access-changed')();
  assert.equal(element('srmConsulted').textContent,'41');
  assert.equal(element('srmRefresh').disabled,true);
- assert.match(element('srmSourceNote').textContent,/추가 SRM 협의 기록 미조회/);
+ assert.equal(element('srmSourceNote').textContent,'');
 }
 await verify(false);
 await verify(true);
