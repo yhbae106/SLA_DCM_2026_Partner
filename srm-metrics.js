@@ -24,7 +24,7 @@ function meaningful(action){
 }
 const keyFor=x=>clean(x?.key)||[clean(x?.outlet),clean(x?.businessNo)].join('|||');
 const isDone=x=>x==='DONE'||x==='VERIFIED';
-function build({actions=[],history=[],events=[],month='',latestMonth=''}={}){
+function build({actions=[],history=[],events=[],month='',latestMonth='',viewRows=null}={}){
  const selected=clean(month),latest=clean(latestMonth)||selected,showLive=selected===latest;
  const map=new Map();
  const make=(key,origin,base)=>{
@@ -60,6 +60,8 @@ function build({actions=[],history=[],events=[],month='',latestMonth=''}={}){
   entry.bulkFilled=Boolean(clean(h.masterAction?.reasonCode)||clean(h.masterAction?.plan)||
    clean(h.partnerAction?.reasonCode)||clean(h.partnerAction?.plan));
   entry.bulkPlan=clean(h.partnerAction?.plan)||clean(h.masterAction?.plan);
+  entry.bulkMasterStatus=normStatus(h.masterAction?.status);
+  entry.bulkPartnerStatus=normStatus(h.partnerAction?.status);
  }
  // The server stores one Action per merchant (not per month). An older month
  // can show the merchant's current saved edits, without misdating the edit.
@@ -71,6 +73,8 @@ function build({actions=[],history=[],events=[],month='',latestMonth=''}={}){
   entry.masterAction={reasonCode:clean(m.reasonCode),plan:clean(m.plan),status:clean(m.status)};
   entry.partnerAction={reasonCode:clean(p.reasonCode),plan:clean(p.plan),status:clean(p.status)};
   entry.masterFilled=meaningful(m);entry.partnerFilled=meaningful(p);
+  entry.partnerSavedStatus=Array.isArray(p.editedFields)&&p.editedFields.includes('status')?
+   normStatus(p.status):null;
   entry.currentSavedValues=true;
  }
  if(showLive)for(const e of events||[]){
@@ -81,9 +85,14 @@ function build({actions=[],history=[],events=[],month='',latestMonth=''}={}){
   if(clean(e.erpVendor))entry.erpVendor=clean(e.erpVendor);
   if(clean(e.entity))entry.entity=clean(e.entity);
  }
- const records=[...map.values()];
+ // The Action Board itself owns the month/outlet/manager scope and determines
+ // exactly which values are visibly "진행중" / "완료". Reuse that projection
+ // rather than assuming only server-authenticated edits are visible.
+ const view=Array.isArray(viewRows)?new Map(viewRows.filter(x=>x?.key).map(x=>[clean(x.key),x])):null;
+ const records=[...map.values()].filter(r=>!view||view.has(r.key));
  const stats={total:records.length,recorded:0,actualRecorded:0,bulkOnly:0,unrecorded:0,master:0,partner:0,
-  needsAction:0,progress:0,done:0,erp:0,verified:0,dispute:0,srm:0,stopped:0,retrospective:0};
+  needsAction:0,progress:0,done:0,displayProgress:0,displayDone:0,projectedProgress:0,projectedDone:0,
+  erp:0,verified:0,dispute:0,srm:0,stopped:0,retrospective:0};
  for(const r of records){
   const m=r.masterAction||{},p=r.partnerAction||{},ev=r.events||[];
   const lastEvent=ev[ev.length-1]||{},eventStatus=normStatus(lastEvent.status);
@@ -112,8 +121,23 @@ function build({actions=[],history=[],events=[],month='',latestMonth=''}={}){
   r.done=states.length>0&&states.every(isDone);
   r.progress=!r.done&&states.some(s=>s==='IN_PROGRESS'||s==='WAITING');
   r.needsAction=!r.done&&!r.verified;
-  r.status=r.done?'DONE':r.progress?'IN_PROGRESS':r.recorded?'RECORDED':r.verified?'VERIFIED':'OPEN';
-  r.statusLabel=r.done?'조치 완료':r.progress?'조치 진행':
+  const shown=view?.get(r.key);
+  const masterState=shown?normStatus(shown.masterStatus):
+   r.retrospective?r.bulkMasterStatus:normStatus(m.status);
+  const partnerState=shown?normStatus(shown.partnerStatus):
+   r.retrospective?(r.partnerSavedStatus??r.bulkPartnerStatus):normStatus(p.status);
+  r.boardStates={master:masterState,partner:partnerState};
+  // No double counting: each merchant is one status case even if BOTH
+  // visible columns are "진행중". Real SRM logs may supplement the board.
+  r.displayProgress=[masterState,partnerState].some(v=>v==='IN_PROGRESS'||v==='WAITING')||
+   (ev.length>0&&r.progress);
+  r.displayDone=!r.displayProgress&&(
+   [masterState,partnerState].some(isDone)||(ev.length>0&&r.done));
+  r.status=r.displayProgress?'IN_PROGRESS':r.displayDone?'DISPLAY_DONE':
+   r.done?'DONE':r.recorded?'RECORDED':r.verified?'VERIFIED':'OPEN';
+  r.statusLabel=r.displayProgress?
+    (r.progress?'조치 진행':'진행중 표시 · 일괄기재(실행 미확인)'):
+   r.displayDone?(r.done?'조치 완료':'완료 표시 · 실제 완료 확인 필요'):
    r.verified?'DCM X→O 개선 · 조치 여부 별도 확인':
    r.bulkOnly?'일괄기재 · 실제 조치 확인 필요':
    r.actualRecorded?'조치 내용 입력 · 진행 확인':'확인·조치 필요';
@@ -131,6 +155,10 @@ function build({actions=[],history=[],events=[],month='',latestMonth=''}={}){
   if(r.needsAction)stats.needsAction++;
   if(r.progress)stats.progress++;
   if(r.done)stats.done++;
+  if(r.displayProgress)stats.displayProgress++;
+  if(r.displayDone)stats.displayDone++;
+  if(r.displayProgress&&!r.progress)stats.projectedProgress++;
+  if(r.displayDone&&!r.done)stats.projectedDone++;
   if(r.erpRelated)stats.erp++;
   if(r.verified)stats.verified++;
   if(r.dispute)stats.dispute++;
