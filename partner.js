@@ -10,6 +10,7 @@ const esc=v=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const pct=v=>v==null?'—':`${(v*100).toFixed(1)}%`,pp=v=>v==null||!Number.isFinite(v)?'—':`${v>=0?'+':''}${(v*100).toFixed(1)}%p`,key=r=>`${r.outlet}|||${r.businessNo}`;
 const monthLabel=m=>{if(!m)return '—';const [y,mm]=m.split('-');return `${y}년 ${Number(mm)}월`;};
 const EDIT_FIELDS=['reasonCode','plan','dueDate','status'];
+const VISIBLE_ACTION_FIELDS=['reasonCode','plan','status']; // Due dates remain stored, not shown in the Action Board.
 function actionKey(){return `dcm-partner-master-actions::${partner}`;}
 function overrideKey(){return `dcm-partner-action-overrides-v1::${partner}`;}
 function canonicalPartnerReasonCode(code){return String(code||'')==='08'?'05':String(code||'');}
@@ -304,7 +305,7 @@ function actionFieldCell(a,k,field,canEdit=true){
   }else{
     input=`<input class="${cls} plan" type="text" maxlength="3000" data-field="${field}" data-key="${keyAttr}" value="${value}" placeholder="업체 조치계획 입력">`;
   }
-  return `<td class="dual-action-cell"><div class="dual-master"><b>마스터</b><span title="${esc(v.masterLabel)}">${esc(v.masterLabel)}</span></div><div class="dual-partner"><b>업체</b>${input}</div>${wip?'<small class="pending-indicator">서버 전송 대기</small>':''}</td>`;
+  return `<td class="dual-action-cell" data-label="${({reasonCode:'원인',plan:'조치계획',status:'상태'}[field]||field)}"><div class="dual-master"><b>마스터</b><span title="${esc(v.masterLabel)}">${esc(v.masterLabel)}</span></div><div class="dual-partner"><b>업체</b>${input}</div>${wip?'<small class="pending-indicator">서버 전송 대기</small>':''}</td>`;
 }
 function renderAction(){
   syncActionViewOptions($('month')?.value);
@@ -318,18 +319,18 @@ function renderAction(){
       display=a.monthlyHistorical?'<small class="monthly-action-marker" title="월별 DCM 자료 기준 사후 분류(공급 중단 또는 과거 협의 수행 증빙은 별도 확인 필요)">'+(window.DCM_MONTHLY_ACTION_HISTORY?.get($('month')?.value||'',k)?.type==='SUPPLY_STOP'?'공급 중단(사후 관리 분류)':'월별 X→O 조치 이력')+'</small>':hasPartner?'<small class="local-action-marker">업체 입력 있음</small>':'';
     const status=e=>{
       const st=L.normStatus(r.statuses?.[e]),label=st||'—';
-      return '<td class="status-cell"><span class="status-pill status-'+(st||'na').toLowerCase()+'" title="'+esc(e)+' '+(st==='O'?'연동':st==='X'?'미연동':'미평가')+'">'+label+'</span></td>';
+      return '<td class="status-cell" data-label="'+esc(e)+'"><span class="status-pill status-'+(st||'na').toLowerCase()+'" title="'+esc(e)+' '+(st==='O'?'연동':st==='X'?'미연동':'미평가')+'">'+label+'</span></td>';
     };
     const name='<strong>'+esc(r.businessName)+'</strong><small class="business-number">'+esc(r.businessNo)+'</small><button type="button" class="srm-launch" data-srm-open="'+esc(k)+'">SRM 협의</button>'+display;
     const changeSet=actionContext?.improved.get(k)||actionContext?.worsened.get(k);
     const trend=changeSet?.size?'<small class="action-trend">전월 대비 상태 변경</small>':'';
     return '<tr class="'+(hasX?'':'not-x-row')+'">'+
-      '<td class="key-col name-col">'+name+trend+'</td>'+
-      '<td>'+esc(r.outlet)+'</td>'+
+      '<td class="key-col name-col" data-label="거래처">'+name+trend+'</td>'+
+      '<td data-label="업체/권역">'+esc(r.outlet)+'</td>'+
       E.map(status).join('')+
-      '<td>'+(hasX?r.streak+'개월':'—')+'</td>'+
-      EDIT_FIELDS.map(f=>actionFieldCell(a,k,f,canEdit)).join('')+'</tr>';
-  }).join('')||'<tr><td colspan="10" class="empty">조건에 해당하는 거래처가 없습니다. 필터나 검색어를 변경해 주세요.</td></tr>';
+      '<td data-label="미연동 기간">'+(hasX?r.streak+'개월':'—')+'</td>'+
+      VISIBLE_ACTION_FIELDS.map(f=>actionFieldCell(a,k,f,canEdit)).join('')+'</tr>';
+  }).join('')||'<tr><td colspan="9" class="empty">조건에 해당하는 거래처가 없습니다. 필터나 검색어를 변경해 주세요.</td></tr>';
   const assessed=rr.reduce((sum,r)=>sum+E.filter(e=>L.normStatus(r.statuses?.[e])).length,0),
         xs=rr.reduce((sum,r)=>sum+E.filter(e=>L.normStatus(r.statuses?.[e])==='X').length,0);
   if($('actionFilterCount'))$('actionFilterCount').textContent=
@@ -369,7 +370,7 @@ function startActionPolling(){
   actionPoll=setInterval(()=>pullSharedActions(false),60000);
   dataPoll=setInterval(()=>{if(document.visibilityState==='visible'&&Date.now()-lastEditAt>10000&&!document.activeElement?.closest?.('#actionBody'))pull();},180000);
 }
-function renderEmpty(){['rate','kpiDeltaRate','xCount','needCount','supplyCount','x2o','o2x','targetNeed','deltaRate','newSupply','stopSupply','changeX2O'].forEach(id=>{if($(id))$(id).textContent='-';});['persistAbs','persistState','all3Abs','all3State'].forEach(id=>{if($(id))$(id).textContent='-';});actionContext=null;$('actionBody').innerHTML='<tr><td colspan="10" class="empty">표시할 데이터가 없습니다.</td></tr>';if($('actionFilterCount'))$('actionFilterCount').textContent='0처';$('entityCards').innerHTML=E.map(e=>`<div class="entity"><h3>${e}</h3><div class="rate">-</div></div>`).join('');}
+function renderEmpty(){['rate','kpiDeltaRate','xCount','needCount','supplyCount','x2o','o2x','targetNeed','deltaRate','newSupply','stopSupply','changeX2O'].forEach(id=>{if($(id))$(id).textContent='-';});['persistAbs','persistState','all3Abs','all3State'].forEach(id=>{if($(id))$(id).textContent='-';});actionContext=null;$('actionBody').innerHTML='<tr><td colspan="9" class="empty">표시할 데이터가 없습니다.</td></tr>';if($('actionFilterCount'))$('actionFilterCount').textContent='0처';$('entityCards').innerHTML=E.map(e=>`<div class="entity"><h3>${e}</h3><div class="rate">-</div></div>`).join('');}
 async function request(payload){
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),18000);
  try{
