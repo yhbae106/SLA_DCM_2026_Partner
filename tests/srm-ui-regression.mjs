@@ -26,10 +26,11 @@ async function check(partner){
   });
   return els.get(id);
  };
- const host={insertBefore(){},appendChild(){}};
+ let mounted=false;
+ const host={insertBefore(){mounted=true},appendChild(){mounted=true}};
  const doc={
   readyState:'complete',head:{appendChild(node){styles.push(node.textContent);}},
-  body:host,getElementById:el,querySelector:()=>host,addEventListener(){},
+  body:host,getElementById:id=>id==='srmWorkflow'&&!mounted?null:el(id),querySelector:()=>host,addEventListener(){},
   createElement(tag){return tag==='style'?{textContent:''}:{
    id:'',className:'',innerHTML:'',parentNode:host,querySelector:selector=>el(selector),
    insertAdjacentHTML(){}
