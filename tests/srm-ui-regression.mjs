@@ -68,7 +68,8 @@ async function verify(partner){
   assert.equal(rowCount(),count);
   for(const row of body.innerHTML.match(/<tr\b[^>]*>[\s\S]*?<\/tr>/g)||[])
    assert.equal((row.match(/<td\b/g)||[]).length,5,'SRM table has only five columns');
-  assert.doesNotMatch(body.innerHTML,/2026-06-30|자동 생성 ERP 협의|자동 생성 업체 협의/);
+  assert.doesNotMatch(body.innerHTML,/2026-06-30|실제 조치 완료 입증/);
+  assert.match(body.innerHTML,/일괄 제안: 자동 생성 업체 협의/);
  };
  assert.equal(element('srmManaged').textContent,'41');
  assert.equal(element('srmConsulted').textContent,'41','Bulk-entered historical notes are visibly recorded without being completed');
