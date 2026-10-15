@@ -55,6 +55,7 @@ for(const file of walk().filter(x=>x.endsWith('.js'))){execFileSync(process.exec
 ok('all JavaScript parses');
 await import('./monthly-history-regression.mjs');
 await import('./srm-metrics-regression.mjs');
+await import('./srm-ui-regression.mjs');
 
 const ctx={};ctx.window=ctx;ctx.globalThis=ctx;vm.createContext(ctx);vm.runInContext(read('logic.js'),ctx);
 const L=ctx.DCMLogic;if(!L)fail('DCMLogic not exported');
