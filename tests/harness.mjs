@@ -253,8 +253,16 @@ test.renderAction();
 if(!uiElements.get('actionBody').innerHTML.includes('업체 수정값 적용됨')||
  !uiElements.get('actionBody').innerHTML.includes('업체가 확인한 수정 계획'))
  fail('Re-render reverted a confirmed Partner correction to generated bulk text');
+const displayed=sandbox.window.DCMPartnerSRM.viewRows().find(v=>v.key===historicKey);
+if(!displayed||displayed.masterStatus!=='DONE'||displayed.partnerStatus!=='DONE')
+ fail('SRM-visible Partner states must equal the historical Master/Partner DONE cells shown by the Action Board');
+test.savePartnerOverride(historicKey,'status','TODO');
+const changedStatus=sandbox.window.DCMPartnerSRM.viewRows().find(v=>v.key===historicKey);
+if(!changedStatus||changedStatus.masterStatus!=='DONE'||changedStatus.partnerStatus!=='TODO')
+ fail('SRM-visible Partner status did not follow an actual editable status override');
+test.reset();
 test.setActionView('supplied',{scroll:false});
-ok('historical Partner default fields are editable, real saves take priority and persist after acknowledgement');
+ok('historical Partner fields editable, overrides persist, and SRM status projection follows actual visible values');
 
 const julyContext=test.buildActionContext('2026-07',[],[stopJune],L.compare([stopJune],[]),[]);
 const missing=test.filterActionRows(julyContext,'stopped');
