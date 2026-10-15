@@ -54,6 +54,22 @@ function build({actions=[],history=[],events=[],month='',latestMonth=''}={}){
    [h.masterAction,h.partnerAction].some(a=>normStatus(a?.status)==='DONE');
   entry.oxSnapshot=selected===h.sourceMonth?clean(h.startOx):clean(h.endOx);
   entry.entity=(h.entities||[])[0]||entry.entity;
+  // Bulk-filled values are proposals on screen, not proven interventions.
+  entry.bulkFilled=Boolean(clean(h.masterAction?.reasonCode)||clean(h.masterAction?.plan)||
+   clean(h.partnerAction?.reasonCode)||clean(h.partnerAction?.plan));
+  entry.bulkPlan=clean(h.partnerAction?.plan)||clean(h.masterAction?.plan);
+ }
+ // The server stores one Action per merchant (not per month). An older month
+ // can show the merchant's current saved edits, without misdating the edit.
+ if(!showLive)for(const a of actions||[]){
+  const entry=map.get(keyFor(a));
+  if(!entry||!entry.retrospective||a?.generated||a?.monthlyHistorical)continue;
+  const m=a.masterAction||a,p=a.partnerAction||{};
+  if(!meaningful(m)&&!meaningful(p))continue;
+  entry.masterAction={reasonCode:clean(m.reasonCode),plan:clean(m.plan),status:clean(m.status)};
+  entry.partnerAction={reasonCode:clean(p.reasonCode),plan:clean(p.plan),status:clean(p.status)};
+  entry.masterFilled=meaningful(m);entry.partnerFilled=meaningful(p);
+  entry.currentSavedValues=true;
  }
  if(showLive)for(const e of events||[]){
   const key=keyFor(e);if(!key.includes('|||'))continue;
@@ -64,7 +80,7 @@ function build({actions=[],history=[],events=[],month='',latestMonth=''}={}){
   if(clean(e.entity))entry.entity=clean(e.entity);
  }
  const records=[...map.values()];
- const stats={total:records.length,recorded:0,unrecorded:0,master:0,partner:0,
+ const stats={total:records.length,recorded:0,actualRecorded:0,bulkOnly:0,unrecorded:0,master:0,partner:0,
   needsAction:0,progress:0,done:0,erp:0,verified:0,dispute:0,srm:0,stopped:0,retrospective:0};
  for(const r of records){
   const m=r.masterAction||{},p=r.partnerAction||{},ev=r.events||[];
@@ -73,11 +89,19 @@ function build({actions=[],history=[],events=[],month='',latestMonth=''}={}){
   if(r.partnerFilled)stats.partner++;
   if(r.retrospective)stats.retrospective++;
   if(ev.length)stats.srm++;
-  r.recorded=r.masterFilled||r.partnerFilled||ev.length>0;
+  r.actualRecorded=Boolean(r.masterFilled||r.partnerFilled||ev.length>0);
+  r.bulkOnly=Boolean(r.bulkFilled&&!r.actualRecorded);
+  // Include the requested bulk notes in "recorded" but identify them distinctly.
+  r.recorded=Boolean(r.actualRecorded||r.bulkFilled);
   if(r.recorded)stats.recorded++;else stats.unrecorded++;
-  r.recordSource=[r.masterFilled?'마스터 입력':'',r.partnerFilled?'업체 입력':'',
-   ev.length?'추가 협의 기록':''].filter(Boolean).join(' · ')||
-   (r.retrospective?'월별 DCM 사후분류':'미입력');
+  if(r.actualRecorded)stats.actualRecorded++;
+  if(r.bulkOnly)stats.bulkOnly++;
+  r.recordSource=[
+   r.bulkFilled?'월별 일괄기재(실행 미확인)':'',
+   r.masterFilled?(r.currentSavedValues?'마스터 현재 저장값':'마스터 입력'):'',
+   r.partnerFilled?(r.currentSavedValues?'업체 현재 저장값':'업체 입력'):'',
+   ev.length?'추가 협의 기록':''
+  ].filter(Boolean).join(' · ')||'미입력';
   const states=[];
   if(r.masterFilled){const x=normStatus(m.status);if(x&&x!=='OPEN')states.push(x);}
   if(r.partnerFilled){const x=normStatus(p.status);if(x&&x!=='OPEN')states.push(x);}
@@ -88,7 +112,9 @@ function build({actions=[],history=[],events=[],month='',latestMonth=''}={}){
   r.needsAction=!r.done&&!r.verified;
   r.status=r.done?'DONE':r.progress?'IN_PROGRESS':r.recorded?'RECORDED':r.verified?'VERIFIED':'OPEN';
   r.statusLabel=r.done?'조치 완료':r.progress?'조치 진행':
-   r.verified?'DCM X→O 개선 확인':r.recorded?'조치 이력 있음 · 진행 확인':'확인·조치 필요';
+   r.verified?'DCM X→O 개선 · 조치 여부 별도 확인':
+   r.bulkOnly?'일괄기재 · 실제 조치 확인 필요':
+   r.actualRecorded?'조치 내용 입력 · 진행 확인':'확인·조치 필요';
   r.erpRelated=ev.some(e=>!!clean(e.erpVendor)||/ERP/i.test(clean(e.contactTarget))||e.status==='ERP_WAIT');
   r.erpVendor=clean(r.erpVendor)||clean(lastEvent.erpVendor);
   r.dispute=r.masterFilled&&r.partnerFilled&&!!clean(m.reasonCode)&&!!clean(p.reasonCode)&&
@@ -98,6 +124,7 @@ function build({actions=[],history=[],events=[],month='',latestMonth=''}={}){
   const plan=masterPlan&&partnerPlan&&masterPlan!==partnerPlan?
    '마스터: '+masterPlan+' / 업체: '+partnerPlan:partnerPlan||masterPlan;
   r.nextAction=clean(lastEvent.nextAction)||plan||
+   (r.bulkFilled&&clean(r.bulkPlan)?'일괄 제안: '+r.bulkPlan:'')||
    (r.needsAction&&r.recorded?'진행사항 확인':'—');
   if(r.needsAction)stats.needsAction++;
   if(r.progress)stats.progress++;
