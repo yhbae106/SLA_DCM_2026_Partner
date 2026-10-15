@@ -57,9 +57,16 @@ function directMetrics(){
  assert.equal(a.stats.displayDone,0);
  const replaced=build({actions,history:historical.filter(h=>h.month==='2026-06'),
   month:'2026-06',latestMonth:'2026-09',
-  viewRows:[shownJune[0],{...shownJune[1],masterStatus:'TODO',partnerStatus:'TODO'}]});
+  viewRows:[shownJune[0],{...shownJune[1],masterStatus:'DONE',partnerStatus:'DONE'}]});
  assert.equal(replaced.stats.displayProgress,1,
-  'If Partner and Master actual displayed states are changed, SRM must follow the visible board');
+  'One DONE merchant must no longer be counted as IN_PROGRESS');
+ assert.equal(replaced.stats.displayDone,1);
+ const awaiting=build({actions,history:historical.filter(h=>h.month==='2026-06'),
+  month:'2026-06',latestMonth:'2026-09',
+  viewRows:[shownJune[0],{...shownJune[1],masterStatus:'TODO',partnerStatus:'TODO'}]});
+ assert.equal(awaiting.stats.displayProgress,2,
+  'Every managed case without a completed status belongs in progress');
+ assert.equal(awaiting.stats.displayDone,0);
  const july=build({actions,history:historical.filter(h=>h.month==='2026-07'),
   month:'2026-07',latestMonth:'2026-09',viewRows:shownJuly});
  assert.equal(july.stats.displayDone,2,'Both visible DONE merchants should be in the displayed DONE count');
@@ -112,7 +119,7 @@ function uiFlow(partner){
  assert.equal(get('srmOpen').textContent,'2',
   'Screenshot regression: SRM showed 1 although two Incheon merchant status cells were IN_PROGRESS');
  assert.equal(get('srmDone').textContent,'0');
- assert.match(get('srmSourceNote').textContent,/진행중 표시 2처\(실제 입력 기준 진행 1처, 일괄\/표시만 1처\)/);
+ assert.equal(get('srmSourceNote').textContent,'');
  assert.match(shown(),/그린팜약품-GP\(1\)/);
  assert.match(shown(),/서울약업-용마택배/);
  assert.doesNotMatch(shown(),/타권역 거래처/);
@@ -124,7 +131,7 @@ function uiFlow(partner){
  month='2026-07';visible=shownJuly;get('month').value=month;ctx.DCMSRM.update();
  assert.equal(get('srmOpen').textContent,'0');
  assert.equal(get('srmDone').textContent,'2');
- assert.match(get('srmSourceNote').textContent,/완료 표시 2처\(실제 확인 0처, 표시만 2처\)/);
+ assert.equal(get('srmSourceNote').textContent,'');
  get('srmFilter').onchange({target:{value:'done'}});
  assert.match(get('srmCount').textContent,/2026-07 · 2처 \/ 관리 2처/);
  assert.equal((shown().match(/<tr\b/g)||[]).length,2);
@@ -149,7 +156,38 @@ function actualIncheonVolumeRegression(){
  assert.equal(result.stats.displayDone,0);
  assert.equal(result.records.filter(r=>r.displayProgress).length,result.stats.displayProgress);
 }
+function screenshotJuly73Regression(){
+ const sandbox={};sandbox.window=sandbox;vm.createContext(sandbox);
+ vm.runInContext(metricSource,sandbox);
+ // Screenshot acceptance test: 73 managed = 14 progress + 59 completed
+ // and independently 49 follow-up + 24 improved.
+ const list=Array.from({length:73},(_,i)=>{
+  const row=h('인천약품|||J'+i,'2026-07',i<59?'DONE':'IN_PROGRESS');
+  row.type=i<24?'X2O':'SUPPLY_STOP';
+  return row;
+ });
+ const views=list.map((r,i)=>({key:r.key,masterStatus:i<59?'DONE':'IN_PROGRESS',
+  partnerStatus:i<59?'DONE':'IN_PROGRESS',monthlyHistorical:true}));
+ const value=sandbox.DCMSRMAggregate.build({
+  history:list,month:'2026-07',latestMonth:'2026-09',viewRows:views
+ });
+ for(const [key,expected] of Object.entries({
+  total:73,displayProgress:14,displayDone:59,needsAction:49,verified:24,recorded:73
+ })){
+  assert.equal(value.stats[key],expected,'July screenshot KPI reconciliation: '+key);
+ }
+ assert.equal(value.stats.displayProgress+value.stats.displayDone,value.stats.total);
+ assert.equal(value.stats.needsAction+value.stats.verified,value.stats.total);
+ assert.equal(value.records.filter(r=>r.displayProgress).length,14);
+ assert.equal(value.records.filter(r=>r.displayDone).length,59);
+ assert.equal(value.records.filter(r=>r.needsAction).length,49);
+ assert.equal(value.records.filter(r=>r.verified).length,24);
+ assert.ok(value.records.every(r=>r.recordSource==='마스터 입력 · 업체 입력'&&
+  ['진행중','완료'].includes(r.statusLabel)&&
+  !/일괄 제안|월별 일괄|실행 미확인|표시/.test(r.nextAction)));
+}
 directMetrics();
+screenshotJuly73Regression();
 actualIncheonVolumeRegression();
 uiFlow(false);
 uiFlow(true);
