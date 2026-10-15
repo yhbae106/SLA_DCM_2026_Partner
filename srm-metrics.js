@@ -17,6 +17,8 @@ const normStatus=value=>{
 function meaningful(action){
  if(!action||action.monthlyHistorical||action.retrospective||action.generated)return false;
  if(Array.isArray(action.editedFields)&&!action.editedFields.some(f=>EDITABLE.includes(f)))return false;
+ // An explicitly saved TODO choice is still a real input, unlike the default TODO.
+ if(Array.isArray(action.editedFields)&&action.editedFields.includes('status')&&normStatus(action.status)==='OPEN')return true;
  return !!(clean(action.reasonCode)||clean(action.plan)||
   ['IN_PROGRESS','WAITING','DONE','VERIFIED'].includes(normStatus(action.status)));
 }
