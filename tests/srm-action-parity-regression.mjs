@@ -129,7 +129,28 @@ function uiFlow(partner){
  assert.match(get('srmCount').textContent,/2026-07 · 2처 \/ 관리 2처/);
  assert.equal((shown().match(/<tr\b/g)||[]).length,2);
 }
+function actualIncheonVolumeRegression(){
+ const sandbox={};sandbox.window=sandbox;vm.createContext(sandbox);
+ vm.runInContext(metricSource,sandbox);
+ // Shape taken from the observed June 2026 Incheon discrepancy:
+ // 24 monthly proposed progress rows, only 1 actual Action status in progress.
+ // Use synthetic merchant keys, not customer identifiers.
+ const many=Array.from({length:24},(_,i)=>h('인천약품|||'+String(1000+i),'2026-06','IN_PROGRESS'));
+ const views=many.map(r=>({key:r.key,masterStatus:'IN_PROGRESS',partnerStatus:'IN_PROGRESS'}));
+ const real=[{key:many[0].key,outlet:'인천약품',businessNo:many[0].businessNo,
+  masterAction:{reasonCode:'02',plan:'실제 입력',status:'IN_PROGRESS'},partnerAction:{editedFields:[]}}];
+ const result=sandbox.DCMSRMAggregate.build({
+  actions:real,history:many,month:'2026-06',latestMonth:'2026-09',viewRows:views
+ });
+ assert.equal(result.stats.total,24);
+ assert.equal(result.stats.displayProgress,24,'June Incheon board-status count must be 24');
+ assert.equal(result.stats.progress,1,'Confirmed saved progress is a distinct metric, only 1');
+ assert.equal(result.stats.projectedProgress,23);
+ assert.equal(result.stats.displayDone,0);
+ assert.equal(result.records.filter(r=>r.displayProgress).length,result.stats.displayProgress);
+}
 directMetrics();
+actualIncheonVolumeRegression();
 uiFlow(false);
 uiFlow(true);
 console.log('PASS SRM ACTION PARITY: June Incheon 2 visible progress vs 1 actual, no double count, exact partner/outlet scope, July 2 displayed DONE vs 0 confirmed, KPI equals filter rows');
