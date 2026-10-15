@@ -56,6 +56,7 @@ ok('all JavaScript parses');
 await import('./monthly-history-regression.mjs');
 await import('./srm-metrics-regression.mjs');
 await import('./srm-ui-regression.mjs');
+await import('./srm-action-parity-regression.mjs');
 
 const ctx={};ctx.window=ctx;ctx.globalThis=ctx;vm.createContext(ctx);vm.runInContext(read('logic.js'),ctx);
 const L=ctx.DCMLogic;if(!L)fail('DCMLogic not exported');
