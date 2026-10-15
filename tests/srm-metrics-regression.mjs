@@ -56,6 +56,7 @@ const logged=M.build({actions:[a('C|||5',{status:'DONE',reasonCode:'04',partnerA
 if(logged.stats.done!==1||logged.stats.erp!==1||logged.stats.dispute!==1)
  fail('Actual recorded action/ERP conversation must still be counted');
 if(M.meaningful({dueDate:'2026-09-30',status:'TODO'}))fail('A retired due date cannot create an active SRM case');
+if(!M.meaningful({status:'TODO',editedFields:['status']}))fail('Explicitly saved Partner TODO must be an input record');
 const older=M.build({actions,history:[],month:'2026-08',latestMonth:'2026-09'});
 if(older.stats.total!==0)fail('Timeless actions leaked into a previous month');
 const entered=M.build({month:'2026-09',latestMonth:'2026-09',actions:[
