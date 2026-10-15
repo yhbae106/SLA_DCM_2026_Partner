@@ -10,13 +10,20 @@ const workflow=read('srm-workflow.js');
 new Function(workflow);
 if(!workflow.includes('grid-template-columns:repeat(auto-fit,minmax(min(100%,245px),1fr))'))
   fail('SRM form must use responsive container-width grid, not three fixed columns');
-if(!workflow.includes('box-sizing:border-box')||!workflow.includes('overflow-x:auto'))
+if(!workflow.includes('box-sizing:border-box')||!workflow.includes('overflow-x:hidden'))
   fail('SRM fields/table do not isolate horizontal overflow');
 if(!workflow.includes("const host=target?.parentNode||document.querySelector('main.wrap')||document.body"))
   fail('SRM panel can escape the dashboard main container');
 if(!workflow.includes("const target=isPartner()?$('action'):$('ctActionBody')?.closest('section')"))
   fail('Master SRM panel anchor is not the Action Board section');
-ok('SRM fixed-width overflow guard, responsive field grid and in-layout mount');
+if(!workflow.includes('srmNeedsAction')||!workflow.includes('srmConsulted')||
+   workflow.includes('srmOverdue')||workflow.includes('srm-dueDate')||
+   workflow.includes('>기한</th>')||workflow.includes('기한 초과'))
+   fail('SRM must show six grounded metrics without obsolete deadline inputs or KPIs');
+if(!workflow.includes('table-layout:fixed')||!workflow.includes('min-width:0')||
+   !workflow.includes('data-label="다음 조치"'))
+   fail('SRM six-column table must not require horizontal scrolling on desktop or mobile');
+ok('SRM six grounded KPI cards, deadline-free editor/table and responsive in-layout mount');
 
 if(!html.includes('srm-workflow.js')||!workflow.includes('srmAppend')||!workflow.includes('SRM'))fail('SRM workflow panel missing');
 const partnerJsText=read('partner.js');
