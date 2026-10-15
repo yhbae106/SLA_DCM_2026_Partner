@@ -22,7 +22,7 @@ if(!workflow.includes('srmNeedsAction')||!workflow.includes('srmConsulted')||
    fail('SRM must show six grounded metrics without obsolete deadline inputs or KPIs');
 if(!workflow.includes('table-layout:fixed')||!workflow.includes('min-width:0')||
    !workflow.includes('data-label="다음 조치"'))
-   fail('SRM six-column table must not require horizontal scrolling on desktop or mobile');
+   fail('SRM five-column table must not require horizontal scrolling on desktop or mobile');
 ok('SRM six grounded KPI cards, deadline-free editor/table and responsive in-layout mount');
 
 if(!html.includes('srm-workflow.js')||!workflow.includes('srmAppend')||!workflow.includes('SRM'))fail('SRM workflow panel missing');
