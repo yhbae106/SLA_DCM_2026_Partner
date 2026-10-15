@@ -57,8 +57,11 @@ function build({actions=[],history=[],events=[],month='',latestMonth='',viewRows
   entry.oxSnapshot=selected===h.sourceMonth?clean(h.startOx):clean(h.endOx);
   entry.entity=(h.entities||[])[0]||entry.entity;
   // Bulk-filled values are proposals on screen, not proven interventions.
-  entry.bulkFilled=Boolean(clean(h.masterAction?.reasonCode)||clean(h.masterAction?.plan)||
-   clean(h.partnerAction?.reasonCode)||clean(h.partnerAction?.plan));
+  entry.bulkMasterFilled=Boolean(clean(h.masterAction?.reasonCode)||clean(h.masterAction?.plan)||
+   ['IN_PROGRESS','WAITING','DONE'].includes(normStatus(h.masterAction?.status)));
+  entry.bulkPartnerFilled=Boolean(clean(h.partnerAction?.reasonCode)||clean(h.partnerAction?.plan)||
+   ['IN_PROGRESS','WAITING','DONE'].includes(normStatus(h.partnerAction?.status)));
+  entry.bulkFilled=entry.bulkMasterFilled||entry.bulkPartnerFilled;
   entry.bulkPlan=clean(h.partnerAction?.plan)||clean(h.masterAction?.plan);
   entry.bulkMasterStatus=normStatus(h.masterAction?.status);
   entry.bulkPartnerStatus=normStatus(h.partnerAction?.status);
@@ -107,12 +110,14 @@ function build({actions=[],history=[],events=[],month='',latestMonth='',viewRows
   if(r.recorded)stats.recorded++;else stats.unrecorded++;
   if(r.actualRecorded)stats.actualRecorded++;
   if(r.bulkOnly)stats.bulkOnly++;
+  // The ordinary management view uses the same Master / Partner columns
+  // regardless of whether they were initially populated in bulk or one by one.
+  // Provenance remains available internally via bulkFilled / actualRecorded.
   r.recordSource=[
-   r.bulkFilled?'월별 일괄기재(실행 미확인)':'',
-   r.masterFilled?(r.currentSavedValues?'마스터 현재 저장값':'마스터 입력'):'',
-   r.partnerFilled?(r.currentSavedValues?'업체 현재 저장값':'업체 입력'):'',
-   ev.length?'추가 협의 기록':''
-  ].filter(Boolean).join(' · ')||'미입력';
+   r.bulkMasterFilled||r.masterFilled?'마스터 입력':'',
+   r.bulkPartnerFilled||r.partnerFilled?'업체 입력':'',
+   ev.length?'추가 협의':''
+  ].filter(Boolean).join(' · ')||'입력 없음';
   const states=[];
   if(r.masterFilled){const x=normStatus(m.status);if(x&&x!=='OPEN')states.push(x);}
   if(r.partnerFilled){const x=normStatus(p.status);if(x&&x!=='OPEN')states.push(x);}
@@ -120,7 +125,8 @@ function build({actions=[],history=[],events=[],month='',latestMonth='',viewRows
   r.verified=!!r.dataImproved||ev.some(e=>normStatus(e.status)==='VERIFIED');
   r.done=states.length>0&&states.every(isDone);
   r.progress=!r.done&&states.some(s=>s==='IN_PROGRESS'||s==='WAITING');
-  r.needsAction=!r.done&&!r.verified;
+  // Outcome dimension is an exhaustive and exclusive pair.
+  r.needsAction=!r.verified;
   const shown=view?.get(r.key);
   const masterState=shown?normStatus(shown.masterStatus):
    r.retrospective?r.bulkMasterStatus:normStatus(m.status);
@@ -133,14 +139,11 @@ function build({actions=[],history=[],events=[],month='',latestMonth='',viewRows
    (ev.length>0&&r.progress);
   r.displayDone=!r.displayProgress&&(
    [masterState,partnerState].some(isDone)||(ev.length>0&&r.done));
-  r.status=r.displayProgress?'IN_PROGRESS':r.displayDone?'DISPLAY_DONE':
-   r.done?'DONE':r.recorded?'RECORDED':r.verified?'VERIFIED':'OPEN';
-  r.statusLabel=r.displayProgress?
-    (r.progress?'조치 진행':'진행중 표시 · 일괄기재(실행 미확인)'):
-   r.displayDone?(r.done?'조치 완료':'완료 표시 · 실제 완료 확인 필요'):
-   r.verified?'DCM X→O 개선 · 조치 여부 별도 확인':
-   r.bulkOnly?'일괄기재 · 실제 조치 확인 필요':
-   r.actualRecorded?'조치 내용 입력 · 진행 확인':'확인·조치 필요';
+  // Management dimension is the complementary pair: every case is
+  // "진행중" until a board-visible completion, otherwise "완료".
+  r.displayProgress=!r.displayDone;
+  r.status=r.displayDone?'DONE':'IN_PROGRESS';
+  r.statusLabel=r.displayDone?'완료':'진행중';
   r.erpRelated=ev.some(e=>!!clean(e.erpVendor)||/ERP/i.test(clean(e.contactTarget))||e.status==='ERP_WAIT');
   r.erpVendor=clean(r.erpVendor)||clean(lastEvent.erpVendor);
   r.dispute=r.masterFilled&&r.partnerFilled&&!!clean(m.reasonCode)&&!!clean(p.reasonCode)&&
@@ -150,7 +153,7 @@ function build({actions=[],history=[],events=[],month='',latestMonth='',viewRows
   const plan=masterPlan&&partnerPlan&&masterPlan!==partnerPlan?
    '마스터: '+masterPlan+' / 업체: '+partnerPlan:partnerPlan||masterPlan;
   r.nextAction=clean(lastEvent.nextAction)||plan||
-   (r.bulkFilled&&clean(r.bulkPlan)?'일괄 제안: '+r.bulkPlan:'')||
+   (r.bulkFilled?clean(r.bulkPlan):'')||
    (r.needsAction&&r.recorded?'진행사항 확인':'—');
   if(r.needsAction)stats.needsAction++;
   if(r.progress)stats.progress++;
