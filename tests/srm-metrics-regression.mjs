@@ -31,7 +31,7 @@ if(!converted?.verified||converted?.done||converted?.source!=='live'||converted?
  fail('Actual live Action must win over synthetic historical notes; X-to-O is not proof of completed work');
 const stopped=result.records.find(r=>r.key==='B|||4');
 if(!stopped?.needsAction||stopped?.done||stopped?.masterFilled||stopped?.partnerFilled||
- stopped.erpRelated||stopped.verified||!stopped.recorded||stopped.actualRecorded||!stopped.nextAction.startsWith('일괄 제안: '))
+ stopped.erpRelated||stopped.verified||!stopped.recorded||stopped.actualRecorded||stopped.nextAction!=='공급 중단')
  fail('Automatic supply stop must not count as proved action or ERP discussion');
 const erpFromPlan=result.records.find(r=>r.key==='A|||3');
 if(erpFromPlan.erpRelated)fail('ERP wording in a plan is not evidence of vendor contact');
@@ -82,7 +82,29 @@ const editedHistory=M.build({month:'2026-06',latestMonth:'2026-09',
 if(editedHistory.stats.total!==1||editedHistory.stats.recorded!==1||
  editedHistory.stats.actualRecorded!==1||editedHistory.stats.bulkOnly!==0||
  editedHistory.stats.partner!==1||editedHistory.stats.progress!==1||
- !editedHistory.records[0].recordSource.includes('업체 현재 저장값')||
+ !editedHistory.records[0].recordSource.includes('업체 입력')||
  editedHistory.records[0].nextAction!=='실제 업체 수정')
  fail('A saved Partner edit must override derived historical defaults in SRM without duplicating the merchant');
-console.log('PASS SRM METRICS: no fabricated action/ERP claims, no deadline, verified DCM vs actual completed, live editing evidence preserved');
+for(const [name,item] of Object.entries({
+ current:result,monthly:inferred,completed,doneWithoutImprovement:logged,
+ realEdits:entered,older,editedHistory
+})){
+ const t=item.stats;
+ if(t.displayProgress+t.displayDone!==t.total)
+  fail(name+' progress + completed must equal management target: '+JSON.stringify(t));
+ if(t.needsAction+t.verified!==t.total)
+  fail(name+' needs action + DCM X-to-O improved must equal management target: '+JSON.stringify(t));
+ if(item.records.filter(r=>r.displayProgress).length!==t.displayProgress||
+    item.records.filter(r=>r.displayDone).length!==t.displayDone||
+    item.records.filter(r=>r.needsAction).length!==t.needsAction||
+    item.records.filter(r=>r.verified).length!==t.verified)
+  fail(name+' KPI numbers do not equal per-merchant filters');
+ if(item.records.some(r=>/일괄|실행 미확인|표시 완료|표시 진행중/.test(r.recordSource+' '+r.statusLabel+' '+r.nextAction)))
+  fail(name+' exposed an internal bulk/projection process in partner-facing fields');
+}
+if(logged.stats.needsAction!==1||logged.stats.displayDone!==1||logged.stats.verified!==0)
+ fail('A DONE record without verified DCM outcome belongs in DONE and outcome follow-up buckets, preserving both partitions');
+if(inferred.stats.displayProgress!==41||inferred.stats.displayDone!==0||
+ inferred.records.some(r=>r.recordSource!=='마스터 입력 · 업체 입력'||r.statusLabel!=='진행중'))
+ fail('Bulk-filled records must render as normal Master/Partner entries in the operational view');
+console.log('PASS SRM METRICS: mutually exclusive management/outcome partitions and normal Master/Partner records, no backend classification text');
