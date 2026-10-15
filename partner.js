@@ -318,7 +318,7 @@ function renderAction(){
       const st=L.normStatus(r.statuses?.[e]),label=st||'—';
       return '<td class="status-cell" data-label="'+esc(e)+'"><span class="status-pill status-'+(st||'na').toLowerCase()+'" title="'+esc(e)+' '+(st==='O'?'연동':st==='X'?'미연동':'미평가')+'">'+label+'</span></td>';
     };
-    const name='<strong>'+esc(r.businessName)+'</strong><small class="business-number">'+esc(r.businessNo)+'</small><button type="button" class="srm-launch" data-srm-open="'+esc(k)+'">SRM 협의</button>'+display;
+    const name='<strong>'+esc(r.businessName)+'</strong><small class="business-number">'+esc(r.businessNo)+'</small><button type="button" class="srm-launch" data-srm-open="'+esc(k)+'">추가 협의</button>'+display;
     const changeSet=actionContext?.improved.get(k)||actionContext?.worsened.get(k);
     const trend=changeSet?.size?'<small class="action-trend">전월 대비 상태 변경</small>':'';
     return '<tr class="'+(hasX?'':'not-x-row')+'">'+
