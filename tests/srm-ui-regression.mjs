@@ -71,15 +71,17 @@ async function verify(partner){
   assert.doesNotMatch(body.innerHTML,/2026-06-30|자동 생성 ERP 협의|자동 생성 업체 협의/);
  };
  assert.equal(element('srmManaged').textContent,'41');
- assert.equal(element('srmConsulted').textContent,'2','Real Action edits must count without extra SRM login');
+ assert.equal(element('srmConsulted').textContent,'41','Bulk-entered historical notes are visibly recorded without being completed');
  assert.equal(element('srmNeedsAction').textContent,'41');
  assert.equal(element('srmOpen').textContent,'0');
  assert.equal(element('srmDone').textContent,'0');
  assert.equal(element('srmVerified').textContent,'0');
- assert.match(element('srmSourceNote').textContent,/사후분류 41처/);
+ assert.match(element('srmSourceNote').textContent,/조치 이력 41처/);
+ assert.match(element('srmSourceNote').textContent,/일괄기재만 39처/);
+ assert.match(element('srmSourceNote').textContent,/실제 마스터·업체 입력\/추가 협의 2처/);
  assert.match(element('srmSourceNote').textContent,/추가 SRM 협의 기록 미조회/);
  assert.equal(element('srmRefresh').disabled,true);
- assert.match(body.innerHTML,/마스터 입력 · 업체 입력/);
+ assert.match(body.innerHTML,/월별 일괄기재\(실행 미확인\).*마스터 입력.*업체 입력/);
  assert.match(body.innerHTML,/마스터: 마스터 조치계획 작성 \/ 업체: 업체 조치계획 작성/);
  validateRows(41);
 
@@ -98,20 +100,20 @@ async function verify(partner){
  assert.equal(requests,0,'Unauthorized extra history request must never hit Apps Script');
  assert.doesNotMatch(element('srmMsg').textContent,/공유키를 입력해 주세요|서버 연결 또는 Apps Script 배포 확인 필요/);
  assert.match(element('srmMsg').textContent,/로그인 후 조회/);
- assert.equal(element('srmConsulted').textContent,'2');
+ assert.equal(element('srmConsulted').textContent,'41');
 
  authenticated=true;
  await ctx.DCMSRM.refresh();
  assert.equal(requests,1);
  assert.equal(element('srmRefresh').disabled,false);
- assert.equal(element('srmConsulted').textContent,'3','One real ERP event increases distinct recorded merchants by one');
+ assert.equal(element('srmConsulted').textContent,'41','Real ERP event updates actual count but not overall bulk-record count');
  assert.equal(element('srmOpen').textContent,'1');
  assert.equal(element('srmDone').textContent,'0');
  assert.doesNotMatch(element('srmSourceNote').textContent,/미조회/);
  validateRows(41);
  element('srmFilter').onchange({target:{value:'recorded'}});
- validateRows(3);
- assert.match(element('srmCount').textContent,/3처 \/ 관리 41처/);
+ validateRows(41);
+ assert.match(element('srmCount').textContent,/41처 \/ 관리 41처/);
  element('srmFilter').onchange({target:{value:'consulted'}});
  validateRows(1);
  assert.match(body.innerHTML,/재시험 요청/);
@@ -146,7 +148,7 @@ async function verify(partner){
  // but retain Action Board entries visible in the current browser dataset.
  authenticated=false;
  listeners.get(partner?'dcm-partner-logged-out':'dcm-sync-access-changed')();
- assert.equal(element('srmConsulted').textContent,'2');
+ assert.equal(element('srmConsulted').textContent,'41');
  assert.equal(element('srmRefresh').disabled,true);
  assert.match(element('srmSourceNote').textContent,/추가 SRM 협의 기록 미조회/);
 }
