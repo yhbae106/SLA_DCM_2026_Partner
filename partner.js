@@ -515,6 +515,20 @@ function start(){
     $('partnerLogin').classList.add('hidden-login');loadCachedData();void pull();
   }
 }
-window.DCMPartnerSRM={rows:()=>data,actionRows:()=>actions,name:()=>partner,isAuthenticated:()=>partnerVerified&&!!partner&&!!password,request:x=>{if(!partner||!password)throw Error('파트너 로그인 후 이용해 주세요.');return request({...x,partner,password});}};
+function srmVisibleStates(){
+ const month=$('month')?.value||'';
+ if(!actionContext||actionContext.month!==month)return null;
+ // The status displayed in the Partner Action Board is the only source
+ // of truth for SRM "displayed status" KPIs. This includes month-projected
+ // defaults with actual Partner editedFields overriding them.
+ return actionContext.rows.map(r=>{
+  const a=actionFor(r),m=a.masterAction||a,p=a.partnerAction||{};
+  return {key:key(r),masterStatus:m.status||'',partnerStatus:
+   (p.editedFields||[]).includes('status')?p.status||'':'',
+   monthlyHistorical:!!a.monthlyHistorical};
+ });
+}
+
+window.DCMPartnerSRM={rows:()=>data,actionRows:()=>actions,viewRows:srmVisibleStates,name:()=>partner,isAuthenticated:()=>partnerVerified&&!!partner&&!!password,request:x=>{if(!partner||!password)throw Error('파트너 로그인 후 이용해 주세요.');return request({...x,partner,password});}};
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();
