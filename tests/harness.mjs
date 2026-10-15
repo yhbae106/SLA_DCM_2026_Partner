@@ -41,6 +41,23 @@ ok('legacy unused assets remain removed');
 const required=['partnerLogin','loginPartner','loginPassword','loginBtn','outlet','month','rate','actionBody','exportAction','actionView','actionDetail','actionSearch','actionFilterReset','actionFilterCount','actionViewTitle'];
 for(const id of required)if(!html.includes('id="'+id+'"'))fail('Missing required DOM id: '+id);
 if(html.includes('id="actionEntity"'))fail('Redundant Action Board group-company filter returned');
+const actionOptions=id=>{
+ const selection=html.match(new RegExp('<select id="'+id+'"[^>]*>([\\s\\S]*?)<\\/select>'))?.[1]||'';
+ return [...selection.matchAll(/<option value="([^"]+)"[^>]*>([^<]*)<\/option>/g)]
+  .map(([,value,label])=>({value,label}));
+};
+const expectedBase=[{value:'supplied',label:'전체 거래처'},{value:'x',label:'우선 조치 필요처'}];
+const expectedDetails=[
+ {value:'all',label:'전체'},
+ {value:'persist',label:'2개월 이상 지속 X'},
+ {value:'all3',label:'3개사 모두 X'},
+ {value:'improved',label:'X→O 개선 거래처'},
+ {value:'worsened',label:'O→X 악화 거래처'},
+ {value:'new',label:'신규 공급처'},
+ {value:'stopped',label:'중단 공급처'}];
+if(JSON.stringify(actionOptions('actionView'))!==JSON.stringify(expectedBase)||
+ JSON.stringify(actionOptions('actionDetail'))!==JSON.stringify(expectedDetails))
+ fail('Partner filters must contain only 2 merchant views and 7 essential details, with no history/group selector');
 ok('required partner DOM contract');
 const actionHeader=html.match(/<div class="table-wrap"><table><thead><tr>(.*?)<\/tr>/)?.[1]||'';
 if((actionHeader.match(/<th/g)||[]).length!==9||actionHeader.includes('완료 예정일'))fail('Partner Action Board must have exactly nine visible columns without due date');
