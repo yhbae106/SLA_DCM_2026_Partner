@@ -5,7 +5,7 @@ const L=window.DCMLogic,E=L?.E||['대웅제약','대웅바이오','한올바이�
 let xlsxPromise=null;function ensureXLSX(){if(window.XLSX)return Promise.resolve(window.XLSX);if(xlsxPromise)return xlsxPromise;xlsxPromise=new Promise((resolve,reject)=>{const s=document.createElement('script');s.src=XLSX_URL;s.async=true;s.onload=()=>resolve(window.XLSX);s.onerror=()=>{xlsxPromise=null;reject(new Error('Excel 모듈 로딩 실패 · 네트워크/방화벽을 확인해 주세요.'));};document.head.appendChild(s);});return xlsxPromise;}
 const reasons={'01':'ERP/시스템 미구축','02':'도입 품목 미연동','03':'전산/데이터 오류','04':'거래처 연동 거부/미협조','05':'도매몰 미연동','06':'신규 거래처 연동 예정','07':'당월 매출 미발생'};
 const SESSION_PARTNER='dcm-partner-login-company',SESSION_PASSWORD='dcm-partner-login-password';
-let partner='',password='',partnerVerified=false,data=[],actions=[],remoteActions=[],actionIndex=new Map(),actionOverrides={},actionPoll=null,dataPoll=null,lastActionRevision=null,lastDashboardRevision='',revisionSupported=false,actionCheckBusy=false,srmAnnounced=false,srmNotifyTimer=null,srmRenderTimer=null,historyInput=null,lastEditAt=0,actionLimit=30,riskLimit=60,historyCache=new Map(),saveQueue=Promise.resolve(),inFlight=new Set(),savingBatch=false,loadingData=false,loginInProgress=false,offlineServer=false,actionView='supplied',actionBase='supplied',actionDetail='all',actionSearch='',actionContext=null,activeKpi=null;
+let partner='',password='',partnerVerified=false,data=[],actions=[],remoteActions=[],actionIndex=new Map(),actionOverrides={},actionPoll=null,dataPoll=null,lastActionRevision=null,lastDashboardRevision='',revisionSupported=false,actionCheckBusy=false,actionFetchBusy=false,lastActionFullPullAt=0,srmAnnounced=false,srmNotifyTimer=null,srmRenderTimer=null,historyInput=null,lastEditAt=0,actionLimit=30,riskLimit=60,historyCache=new Map(),saveQueue=Promise.resolve(),inFlight=new Set(),savingBatch=false,loadingData=false,loginInProgress=false,offlineServer=false,actionView='supplied',actionBase='supplied',actionDetail='all',actionSearch='',actionContext=null,activeKpi=null;
 const esc=v=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const pct=v=>v==null?'—':`${(v*100).toFixed(1)}%`,pp=v=>v==null||!Number.isFinite(v)?'—':`${v>=0?'+':''}${(v*100).toFixed(1)}%p`,key=r=>`${r.outlet}|||${r.businessNo}`;
 const monthLabel=m=>{if(!m)return '—';const [y,mm]=m.split('-');return `${y}년 ${Number(mm)}월`;};
@@ -404,15 +404,18 @@ function setActionStatus(msg,bad=false){
   const el=$('actionSyncStatus');if(el){el.textContent=msg;el.className=bad?'sync-error':'sync-ok';}
 }
 async function pullSharedActions(force=false){
-  if(!partner||!password||(!force&&(offlineServer||Date.now()-lastEditAt<10000||document.visibilityState==='hidden'||document.activeElement?.closest?.('#actionBody'))))return;
+  if(actionFetchBusy||!partner||!password||(!force&&(offlineServer||Date.now()-lastEditAt<10000||document.visibilityState==='hidden'||document.activeElement?.closest?.('#actionBody'))))return;
+  actionFetchBusy=true;
   try{
     const json=await request({type:'partnerActions',partner,password});offlineServer=false;
+    lastActionFullPullAt=Date.now();
     if(Object.prototype.hasOwnProperty.call(json,'revision')){lastActionRevision=json.revision;revisionSupported=true;}
     const old=JSON.stringify(remoteActions);applyShared(json);
     cacheCurrentActions(json);
     if(JSON.stringify(remoteActions)!==old)renderAction();
     setActionStatus('마스터·업체 Action 동기화 완료 · 미전송 내용 유지');updateSaveButton();
   }catch(e){if(e.status===404)offlineServer=true;setActionStatus('공용 Action 조회 실패 · '+e.message,true);}
+  finally{actionFetchBusy=false;}
 }
 async function checkActionRevision(){
   if(actionCheckBusy||!partnerVerified||!partner||!password||document.visibilityState==='hidden'||Date.now()-lastEditAt<10000||document.activeElement?.closest?.('#actionBody'))return;
@@ -421,7 +424,10 @@ async function checkActionRevision(){
     const json=await request({type:'partnerActionRevision',partner,password});
     if(!revisionSupported||json.revision!==lastActionRevision)await pullSharedActions(false);
     if(json.dashboardRevision&&json.dashboardRevision!==lastDashboardRevision&&!loadingData){void pull();}
-  }catch(e){if(e.status===404)offlineServer=true;console.warn('[DCM] Action revision check failed',e);}
+  }catch(e){if(e.status===404)offlineServer=true;console.warn('[DCM] Action revision check failed',e);
+    // Older GAS deployments may lack the lightweight revision endpoint.
+    if(Date.now()-lastActionFullPullAt>60000)void pullSharedActions(true);
+  }
   finally{actionCheckBusy=false;}
 }
 function startActionPolling(){
@@ -443,7 +449,7 @@ async function request(payload){
   if(!json.ok)throw new Error(json.error||'조회 실패');
   return json;
  }catch(err){
-  if(err.name==='AbortError')throw new Error('서버가 18초 이내 응답하지 않아 요청이 중단되었습니다.');
+  if(err.name==='AbortError')throw new Error('서버 응답 지연 · '+(['partnerLogin','partnerActionRevision'].includes(payload.type)?'인증/상태 확인 9초':'데이터 조회 18초')+' 제한시간 초과');
   throw err;
  }finally{clearTimeout(timer);}
 }
@@ -546,7 +552,7 @@ async function login(){
  }catch(err){$('loginError').textContent=err.message||'로그인에 실패했습니다.';}
  finally{loginInProgress=false;$('loginBtn').disabled=false;$('loginBtn').textContent='접속하기';}
 }
-function logout(clear=true){clearInterval(actionPoll);clearInterval(dataPoll);clearTimeout(srmNotifyTimer);clearTimeout(srmRenderTimer);srmAnnounced=false;historyInput=null;lastDashboardRevision='';partner='';password='';partnerVerified=false;lastActionRevision=null;revisionSupported=false;
+function logout(clear=true){clearInterval(actionPoll);clearInterval(dataPoll);clearTimeout(srmNotifyTimer);clearTimeout(srmRenderTimer);srmAnnounced=false;historyInput=null;lastDashboardRevision='';partner='';password='';partnerVerified=false;lastActionRevision=null;revisionSupported=false;actionFetchBusy=false;lastActionFullPullAt=0;
  window.dispatchEvent(new CustomEvent('dcm-partner-logged-out'));data=[];actions=[];remoteActions=[];actionIndex.clear();actionOverrides={};historyCache.clear();actionContext=null;actionView='supplied';actionBase='supplied';actionDetail='all';actionSearch='';activeKpi=null;actionLimit=30;offlineServer=false;updateSaveButton();if($('actionView'))$('actionView').value='supplied';if($('actionDetail'))$('actionDetail').value='all';if($('actionSearch'))$('actionSearch').value='';if(clear){sessionStorage.removeItem(SESSION_PARTNER);sessionStorage.removeItem(SESSION_PASSWORD);}$('partnerName').textContent='-';$('partnerLogin').classList.remove('hidden-login');$('loginPassword').value='';renderEmpty();}
 async function exportActions(){const cur=$('month')?.value;if(!cur)return;try{await ensureXLSX();}catch(e){alert(e.message||e);return;}const prev=prevMonth(cur),curr=scope(cur),prior=prev?scope(prev):[],ch=L.compare(prior,curr),ctx=actionContext?.month===cur?actionContext:buildActionContext(cur,curr,prior,ch,risks(cur,curr,prior,ch)),rr=filterActionRows(ctx,actionView,'all',actionSearch);const rows=rr.map(r=>{const a=actionFor(r),c=a.reasonCode||'',m=a.masterAction||a,p=a.partnerAction||{},owned=new Set(p.editedFields||[]),pv=f=>owned.has(f)?String(p[f]??''):'';return {'파트너사':partner,'기준월':cur,'업체/권역':r.outlet,'실사업자번호':r.businessNo,'실사업자명':r.businessName,'미연동 기간':hasCurrentX(r)?`${r.streak}개월`:'—','대웅제약':L.normStatus(r.statuses?.['대웅제약'])||'','대웅바이오':L.normStatus(r.statuses?.['대웅바이오'])||'','한올바이오':L.normStatus(r.statuses?.['한올바이오'])||'','원인코드':c,'원인':reasons[c]||'','조치계획':a.plan||'','상태':statusLabel(a.status||'TODO'),'마스터 원인코드':m.reasonCode||'','업체 원인코드':pv('reasonCode'),'마스터 조치계획':m.plan||'','업체 조치계획':pv('plan'),'마스터 상태':statusLabel(m.status||'TODO'),'업체 상태':pv('status')?statusLabel(pv('status')):'','업체 수정일시':p.updatedAt||''};});const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),'Action Board');XLSX.writeFile(wb,`DCM_ActionBoard_${partner}_${cur}_${actionView}.xlsx`);}
 function start(){
