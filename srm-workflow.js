@@ -12,7 +12,7 @@ const request=x=>isPartner()?window.DCMPartnerSRM?.request(x):window.DCMActionSy
 const canHistory=()=>isPartner()?
  !!(window.DCMPartnerSRM?.isAuthenticated?.()??window.DCMPartnerSRM?.name?.()):
  !!window.DCMActionSync?.isConnected?.();
-let events=[],selected='',entity='대웅제약',filter='all',loading=false,ready=false,generation=0;
+let events=[],selected='',entity='대웅제약',filter='all',loading=false,ready=false,generation=0,lastPartnerHistoryRows=null;
 const labels={OPEN:'확인 요청',CHECKING:'원인 확인',ERP_WAIT:'ERP 협의',IN_PROGRESS:'조치 진행',
  DONE:'조치 완료',VERIFIED:'X→O 검증 완료',REOPENED:'재확인 필요'};
 const draftKey=()=> 'dcm-srm-draft::'+(isPartner()?window.DCMPartnerSRM?.name():'master')+'::'+selected+'::'+entity;
@@ -40,7 +40,11 @@ function render(){
  const raw=source(),month=$('month')?.value||'',
   monthList=[...new Set(raw.map(r=>r.month).filter(Boolean))].sort();
  const archive=window.DCM_MONTHLY_ACTION_HISTORY;
- if(raw.length)archive?.refresh?.(raw);
+ // Partner renders reuse the same immutable server data array until refreshed.
+ // Avoid repeatedly rebuilding multi-month history on each Action filter change.
+ if(raw.length){
+  if(!isPartner()||raw!==lastPartnerHistoryRows){archive?.refresh?.(raw);if(isPartner())lastPartnerHistoryRows=raw;}
+ }else lastPartnerHistoryRows=null;
  const result=window.DCMSRMAggregate?.build({
   actions:actionRows(),history:archive?.forMonth?.(month)||[],events:ready?events:[],
   month,latestMonth:monthList[monthList.length-1]||month,viewRows:displayedRows()
