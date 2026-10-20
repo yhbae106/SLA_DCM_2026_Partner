@@ -515,19 +515,33 @@ async function login(){
  if(!company||!secret){$('loginError').textContent='업체명과 접속코드를 입력해 주세요.';return;}
  loginInProgress=true;$('loginBtn').disabled=true;$('loginBtn').textContent='인증 중...';
  try{
-  // Authentication is now independent of the expensive Action Board sheet.
-  const json=await request({type:'partnerLogin',partner:company,password:secret});
+  // A warm server snapshot can return KPIs and Action values in the LOGIN response.
+  // If the cache is cold the same endpoint authenticates immediately without scanning sheets.
+  const json=await request({type:'partnerLogin',partner:company,password:secret,preferCachedDashboard:true});
   partner=json.partner||company;password=secret;offlineServer=false;partnerVerified=true;
   sessionStorage.setItem(SESSION_PARTNER,partner);sessionStorage.setItem(SESSION_PASSWORD,password);
   $('partnerName').textContent=partner;$('partnerLogin').classList.add('hidden-login');
-  const cached=loadCachedData();loadCachedActions();updateSaveButton();
-  // A revision-matched authorized snapshot is current; skip an unnecessary full download.
+  const warmAction=!!(json.actionSnapshot&&Array.isArray(json.actionSnapshot.actions));
+  if(warmAction){
+    applyShared(json.actionSnapshot);lastActionRevision=json.actionSnapshot.revision||'';
+    revisionSupported=true;cacheCurrentActions(json.actionSnapshot);
+    setActionStatus('서버 캐시에서 최신 Action 데이터 표시');
+  }else loadCachedActions();
+  const warmDashboard=!!(json.dashboardSnapshot&&Array.isArray(json.dashboardSnapshot.data));
+  if(warmDashboard)applyDashboard(json.dashboardSnapshot);
+  const cached=warmDashboard||loadCachedData();
+  updateSaveButton();
   const unchanged=!!(cached&&json.dashboardRevision&&json.dashboardRevision===lastDashboardRevision);
   if(cached)notifySrmAfterPaint();
-  if(unchanged){startActionPolling();
-    const currentCompany=partner;
-    setTimeout(()=>{if(currentCompany===partner&&password)void pullSharedActions(true);},160);
-    $('syncMsg').textContent='최근 확인한 최신 데이터 표시 중 · 변경사항 자동 확인';
+  if(unchanged){
+    startActionPolling();
+    if(!warmAction){
+      const currentCompany=partner;
+      setTimeout(()=>{if(currentCompany===partner&&password)void pullSharedActions(true);},160);
+    }
+    $('syncMsg').textContent=warmDashboard?
+      '서버 최신 현황 바로 표시 · 변경사항 자동 확인':
+      '최근 확인한 최신 데이터 표시 중 · 변경사항 자동 확인';
   }else{void pull();}
  }catch(err){$('loginError').textContent=err.message||'로그인에 실패했습니다.';}
  finally{loginInProgress=false;$('loginBtn').disabled=false;$('loginBtn').textContent='접속하기';}
