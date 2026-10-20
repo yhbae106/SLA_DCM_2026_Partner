@@ -409,6 +409,7 @@ async function pullSharedActions(force=false){
     const json=await request({type:'partnerActions',partner,password});offlineServer=false;
     if(Object.prototype.hasOwnProperty.call(json,'revision')){lastActionRevision=json.revision;revisionSupported=true;}
     const old=JSON.stringify(remoteActions);applyShared(json);
+    cacheCurrentActions(json);
     if(JSON.stringify(remoteActions)!==old)renderAction();
     setActionStatus('마스터·업체 Action 동기화 완료 · 미전송 내용 유지');updateSaveButton();
   }catch(e){if(e.status===404)offlineServer=true;setActionStatus('공용 Action 조회 실패 · '+e.message,true);}
@@ -447,6 +448,26 @@ async function request(payload){
  }finally{clearTimeout(timer);}
 }
 function snapshotKey(){return 'dcm-partner-last-data-v2::'+partner;}
+function actionSnapshotKey(){return 'dcm-partner-last-actions-v1::'+partner;}
+function loadCachedActions(){
+ try{
+  const stored=JSON.parse(sessionStorage.getItem(actionSnapshotKey())||'null');
+  if(!stored||!Array.isArray(stored.actions)||Date.now()-stored.savedAt>3600000)return false;
+  applyShared({actions:stored.actions});
+  if(Object.prototype.hasOwnProperty.call(stored,'revision')){
+    lastActionRevision=stored.revision;revisionSupported=true;
+  }
+  if(actionContext)renderAction();
+  setActionStatus('최근 Action 임시 표시 · 서버 최신값 확인 중');
+  return true;
+ }catch(_){return false;}
+}
+function cacheCurrentActions(json){
+ try{
+  const stored=JSON.stringify({actions:remoteActions,savedAt:Date.now(),revision:json.revision||''});
+  if(stored.length<1800000)sessionStorage.setItem(actionSnapshotKey(),stored);
+ }catch(_){/* Browser storage may be disabled or full; server remains the authority. */}
+}
 function loadCachedData(){
  try{
   const cached=JSON.parse(sessionStorage.getItem(snapshotKey())||'null');
@@ -461,7 +482,7 @@ function applyDashboard(json){
  incoming.forEach(r=>{if(r.outlet==='백제약품 대전')r.manager='정직한';});
  const wasReady=!!data.length,changed=JSON.stringify(data)!==JSON.stringify(incoming);
  if(changed||!wasReady){data=incoming;historyCache.clear();historyInput=null;refreshSelectors();render();}
- if(json.dashboardRevision)lastDashboardRevision=json.dashboardRevision;
+ lastDashboardRevision=String(json.dashboardRevision||'');
  try{
   const text=JSON.stringify({data,savedAt:Date.now(),dashboardRevision:lastDashboardRevision});
   if(text.length<1400000)sessionStorage.setItem(snapshotKey(),text);
@@ -499,7 +520,7 @@ async function login(){
   partner=json.partner||company;password=secret;offlineServer=false;partnerVerified=true;
   sessionStorage.setItem(SESSION_PARTNER,partner);sessionStorage.setItem(SESSION_PASSWORD,password);
   $('partnerName').textContent=partner;$('partnerLogin').classList.add('hidden-login');
-  const cached=loadCachedData();updateSaveButton();
+  const cached=loadCachedData();loadCachedActions();updateSaveButton();
   // A revision-matched authorized snapshot is current; skip an unnecessary full download.
   const unchanged=!!(cached&&json.dashboardRevision&&json.dashboardRevision===lastDashboardRevision);
   if(cached)notifySrmAfterPaint();
@@ -563,7 +584,7 @@ function start(){
   const sp=sessionStorage.getItem(SESSION_PARTNER)||'',sw=sessionStorage.getItem(SESSION_PASSWORD)||'';
   if(sp&&sw){
     partner=sp;password=sw;$('partnerName').textContent=partner;
-    $('partnerLogin').classList.add('hidden-login');loadCachedData();void pull();
+    $('partnerLogin').classList.add('hidden-login');loadCachedData();loadCachedActions();void pull();
   }
 }
 function srmVisibleStates(){
