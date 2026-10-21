@@ -55,7 +55,7 @@ async function verify(partner){
  };
  const response={ok:true,events:[{key:'RETRO|||1',entity:'대웅제약',
   status:'ERP_WAIT',contactTarget:'ERP 업체',erpVendor:'확인된 업체',nextAction:'재시험 요청'}]};
- const fetcher=async payload=>{requests++;payloads.push(payload);return payload.type==='srmAppend'?{ok:true,saved:true}:response;};
+ const fetcher=async payload=>{requests++;payloads.push(payload);return payload.type==='srmAppend'?{ok:true,saved:true,requestId:payload.requestId}:response;};
  const ctx={document:doc,console,localStorage:{getItem(){return null;},setItem(){},removeItem(){}},
   addEventListener(name,fn){listeners.set(name,fn);},
   setTimeout(){},clearTimeout(){}};
@@ -190,3 +190,4 @@ async function verify(partner){
 await verify(false);
 await verify(true);
 console.log('PASS SRM UI: Master/Partner record Action entries once, no login error before authentication, compact five-column view, verified optional history and logout reset');
+

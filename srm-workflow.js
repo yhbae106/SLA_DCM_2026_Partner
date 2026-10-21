@@ -31,6 +31,7 @@ function currentRows(key){
 function syncHistoryUI(){
  const button=$('srmRefresh');if(!button)return;
  const authenticated=canHistory();
+ const save=$('srmSave');if(save){save.disabled=!authenticated||loading;save.textContent=loading?'처리 중…':'추가 기록 저장';}
  button.disabled=!authenticated||loading;
  button.textContent=loading?'조회 중…':authenticated?'추가 이력 새로고침':'로그인 후 추가 이력';
  button.title=authenticated?'별도로 기록된 협의·검증 내역을 불러옵니다.':
@@ -94,21 +95,20 @@ async function refresh(){
  syncHistoryUI();show('추가 SRM 협의 이력 확인 중…');
  try{
   const response=await request({type:'srmList',scope:isPartner()?'partner':'master'});
-  if(!response?.ok)throw Error(response?.error||'SRM 조회 실패');
   if(ticket!==generation||!canHistory())return false;
-  events=Array.isArray(response.events)?response.events:[];ready=true;
+  if(response?.ok!==true||!Array.isArray(response.events)||response.events.some(e=>!e||typeof e.key!=='string'||!E.includes(e.entity)))throw Error(response?.error||'협의 이력 응답을 확인할 수 없습니다.');
+  events=response.events;ready=true;
   render();show(events.length?'추가 협의 이력 '+events.length+'건 조회 완료':'');
   if(selected)history();
   return true;
  }catch(e){
   if(ticket===generation){
    // A separate SRM log failure never invalidates ACTION BOARD entries.
-   ready=false;events=[];render();
-   show('ACTION BOARD 조치 이력은 조회할 수 있습니다. 별도 SRM 협의 기록은 현재 연결되지 않았습니다. '+
-    '로그인·서버 배포 상태를 확인해 주세요. ('+(e?.message||e)+')');
+   render();
+   show((ready?'이전 협의 이력 유지 · 최신 조회 실패 · ':'ACTION BOARD 조치 이력은 조회할 수 있습니다. 추가 협의 이력 조회 실패 · ')+(e?.message||e),true);
   }
   return false;
- }finally{loading=false;syncHistoryUI();}
+ }finally{if(ticket===generation){loading=false;syncHistoryUI();}}
 }
 function history(){
  const h=$('srmHistory');if(!h)return;
@@ -180,27 +180,32 @@ async function submit(ev){
    show('X→O 검증 실패: 기준월 X와 이후 최신월 O를 먼저 확인해 주세요.',true);return;
   }
  }
- const form=$('srmForm'),id=form.dataset.requestId||
+ const form=$('srmForm'),savedDraftKey=draftKey(),draftText=JSON.stringify(value),fingerprint=JSON.stringify([savedDraftKey,value]),
+  id=(form.dataset.requestFingerprint===fingerprint&&form.dataset.requestId)||
   'srm-'+Date.now()+'-'+Math.random().toString(36).slice(2,12);
- form.dataset.requestId=id;
+ form.dataset.requestId=id;form.dataset.requestFingerprint=fingerprint;
  const payload={type:'srmAppend',scope:isPartner()?'partner':'master',key:selected,entity,
   eventType,status,reason:'',owner:'',contactTarget:kind==='contact'?value.contactTarget:'',
   erpVendor:kind==='contact'&&value.contactTarget==='ERP 업체'?value.erpVendor:'',
   detail:value.detail,nextAction:value.nextAction,
   baselineMonth:kind==='verify'?value.baselineMonth:'',requestId:id};
- loading=true;syncHistoryUI();show('추가 협의 기록 저장 중…');
+ const ticket=++generation;loading=true;syncHistoryUI();show('추가 협의 기록 저장 중…');
  try{
   const response=await request(payload);
-  if(!response?.ok||!response.saved)throw Error(response?.error||'서버 저장을 확인하지 못했습니다.');
-  localStorage.removeItem(draftKey());form.dataset.requestId='';
-  $('srm-detail').value='';$('srm-nextAction').value='';
+  if(ticket!==generation||!canHistory())return;
+  if(response?.ok!==true||response.saved!==true||response.requestId!==id)throw Error(response?.error||'서버 저장을 확인하지 못했습니다.');
+  try{if(localStorage.getItem(savedDraftKey)===draftText)localStorage.removeItem(savedDraftKey);}catch(_){}
+  if(draftKey()===savedDraftKey&&form.dataset.requestId===id&&Object.entries(value).every(([field,text])=>$('srm-'+field)?.value===text)){
+   form.dataset.requestId='';$('srm-detail').value='';$('srm-nextAction').value='';
+  }
   loading=false;
   show('추가 협의 기록 저장 확인 완료');
   await refresh();
  }catch(e){
+  if(ticket!==generation||!canHistory())return;
   show('서버 저장 실패 · 작성한 내용은 이 브라우저에 보관됩니다. '+(e?.message||e),true);
   loading=false;
- }finally{syncHistoryUI();}
+ }finally{if(ticket===generation){loading=false;syncHistoryUI();}}
 }
 function authChanged(){
  if(!canHistory()){
@@ -251,7 +256,7 @@ function mount(){
  '<label id="srmBaselineRow" class="srm-conditional" hidden>검증 기준월<select id="srm-baselineMonth"><option value="">기준월 선택</option></select></label>'+
  '<label class="wide">실제 협의·조치 내용<textarea id="srm-detail" rows="2" maxlength="1000" placeholder="확인하거나 처리한 사실만 간단히 기록"></textarea></label>'+
  '<label class="wide">다음 조치 (선택)<textarea id="srm-nextAction" rows="2" maxlength="1000" placeholder="ACTION BOARD와 동일한 계획은 재입력하지 않아도 됩니다"></textarea></label>'+
- '<button class="srm-primary" type="submit">추가 기록 저장</button>'+
+ '<button id="srmSave" class="srm-primary" type="submit">추가 기록 저장</button>'+
  '<p class="srm-help">입력 이력이 있다는 사실은 조치 완료를 뜻하지 않습니다. 완료·연동 검증 결과는 별도로 판단합니다.</p>'+
  '</form><div class="srm-history"><strong>추가 협의·검증 이력</strong><div id="srmHistory"></div></div></div>';
  const target=isPartner()?$('action'):$('ctActionBody')?.closest('section');
@@ -355,3 +360,4 @@ function mount(){
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount,{once:true});else mount();
 window.DCMSRM={open,refresh,update:render};
 })();
+

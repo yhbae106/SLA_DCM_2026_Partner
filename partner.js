@@ -6,6 +6,50 @@ let xlsxPromise=null;function ensureXLSX(){if(window.XLSX)return Promise.resolve
 const reasons={'01':'ERP/시스템 미구축','02':'도입 품목 미연동','03':'전산/데이터 오류','04':'거래처 연동 거부/미협조','05':'도매몰 미연동','06':'신규 거래처 연동 예정','07':'당월 매출 미발생'};
 const SESSION_PARTNER='dcm-partner-login-company',SESSION_PASSWORD='dcm-partner-login-password';
 let partner='',password='',partnerVerified=false,data=[],actions=[],remoteActions=[],actionIndex=new Map(),actionOverrides={},actionPoll=null,dataPoll=null,lastActionRevision=null,lastDashboardRevision='',revisionSupported=false,actionCheckBusy=false,actionFetchBusy=false,lastActionFullPullAt=0,srmAnnounced=false,srmNotifyTimer=null,srmRenderTimer=null,historyInput=null,lastEditAt=0,actionLimit=30,riskLimit=60,historyCache=new Map(),saveQueue=Promise.resolve(),inFlight=new Set(),savingBatch=false,loadingData=false,loginInProgress=false,offlineServer=false,actionView='supplied',actionBase='supplied',actionDetail='all',actionSearch='',actionContext=null,activeKpi=null;
+let sessionGeneration=0,actionGeneration=0,dashboardReceivedAt=0,dashboardUpdatedAt='',dashboardState='empty';
+const ownedRequests=new Set();
+const currentSession=()=>({generation:sessionGeneration,company:partner,secret:password});
+const sameSession=s=>s.generation===sessionGeneration&&s.company===partner&&s.secret===password;
+function retireRequests(){sessionGeneration++;for(const controller of ownedRequests)controller.abort();ownedRequests.clear();}
+function staleRequest(){const error=new Error('이전 접속의 요청이 취소되었습니다.');error.stale=true;return error;}
+const stamp=value=>{const n=new Date(value);return Number.isFinite(n.getTime())?n.toLocaleString('ko-KR',{timeZone:'Asia/Seoul',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}):'';};
+function setDashboardStatus(message,state='loading'){
+ dashboardState=state;const refresh=$('refreshBtn');if(refresh)refresh.disabled=state==='loading';const el=$('syncMsg');if(!el)return;
+ el.textContent=message;el.className='upload-msg '+(state==='error'?'sync-error':state==='confirmed'?'sync-ok':'sync-pending');
+ el.setAttribute?.('data-state',state);
+}
+function confirmDashboard(){
+ dashboardReceivedAt=Date.now();
+ setDashboardStatus(`마스터 현황 · ${data.length.toLocaleString()}건 · 최신 확인 ${stamp(dashboardReceivedAt)}${stamp(dashboardUpdatedAt)?' · 원본 갱신 '+stamp(dashboardUpdatedAt):''}`,'confirmed');
+}
+function validateDashboard(json){
+ if(!json||!Array.isArray(json.data)||json.data.some(r=>!r||typeof r!=='object'||Array.isArray(r)||
+  !/^\d{4}-(0[1-9]|1[0-2])$/.test(r.month)||typeof r.outlet!=='string'||!r.outlet.trim()||
+  !['string','number'].includes(typeof r.businessNo)||!String(r.businessNo).trim()||
+  !r.statuses||typeof r.statuses!=='object'||Array.isArray(r.statuses)))
+  throw new Error('현황 응답의 필수 항목을 확인할 수 없습니다. 이전 조회값을 유지합니다.');
+ return json;
+}
+function validateActions(json){
+ if(!json||!Array.isArray(json.actions)||json.actions.some(a=>!a||typeof a!=='object'||
+  typeof a.key!=='string'||!a.key.includes('|||')||
+  (a.partnerAction!=null&&(typeof a.partnerAction!=='object'||Array.isArray(a.partnerAction)||
+   (a.partnerAction.editedFields!==undefined&&!Array.isArray(a.partnerAction.editedFields))))))
+  throw new Error('조치 응답의 필수 항목을 확인할 수 없습니다. 기존 조치와 미전송 내용을 유지합니다.');
+ return json;
+}
+function validatedAcknowledgements(batch,response){
+ const expected=new Map(batch.map(item=>[JSON.stringify([item.key,item.field]),item]));
+ if(!Array.isArray(response.results)||response.results.length!==batch.length)throw new Error('서버 저장 확인 건수가 일치하지 않습니다.');
+ const checked=[];
+ for(const item of response.results){
+  const id=JSON.stringify([item?.key,item?.field]),original=expected.get(id);
+  if(!original||!Object.prototype.hasOwnProperty.call(item,'value')||original.value!==String(item.value??''))
+   throw new Error('서버 저장 확인이 중복되거나 입력값과 다릅니다. 미전송 내용을 유지합니다.');
+  expected.delete(id);checked.push({item,original});
+ }
+ return checked;
+}
 const esc=v=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const pct=v=>v==null?'—':`${(v*100).toFixed(1)}%`,pp=v=>v==null||!Number.isFinite(v)?'—':`${v>=0?'+':''}${(v*100).toFixed(1)}%p`,key=r=>`${r.outlet}|||${r.businessNo}`;
 const monthLabel=m=>{if(!m)return '—';const [y,mm]=m.split('-');return `${y}년 ${Number(mm)}월`;};
@@ -97,27 +141,25 @@ function updateSaveButton(){
 async function savePendingActions(){
  if(savingBatch||!partner||!password||!data.length)return;
  const changes=pendingChanges();if(!changes.length){setActionStatus('전송할 변경사항이 없습니다.');updateSaveButton();return;}
- const company=partner,secret=password;savingBatch=true;updateSaveButton();
+ const session=currentSession(),company=partner,secret=password;actionGeneration++;actionFetchBusy=false;savingBatch=true;updateSaveButton();
  let completed=0;
  try{
   for(let i=0;i<changes.length;i+=40){
    const batch=changes.slice(i,i+40);
    const response=await request({type:'partnerSaveActions',partner:company,password:secret,changes:batch});
-   if(!Array.isArray(response.results)||response.results.length!==batch.length)throw new Error('서버 저장 확인 건수가 일치하지 않습니다.');
-   for(const item of response.results){
-    const original=batch.find(b=>b.key===item.key&&b.field===item.field&&b.value===String(item.value??''));
-    if(!original)throw new Error('서버가 예상치 못한 변경 결과를 반환했습니다.');
+   if(!sameSession(session))return;
+   for(const {item,original} of validatedAcknowledgements(batch,response)){
     mergeAcknowledgedPartnerField(item.key,item.field,original.value,item);completed++;
    }
-   setActionStatus(`저장 진행 중: ${completed} / ${changes.length}건`);
+   setActionStatus(`저장 진행 중: ${completed} / ${changes.length}건`,false,true);
    window.DCMSRM?.update?.();
   }
   setActionStatus(`${completed}건 저장 완료 · Google Sheet로 전달됨`);
-  void pullSharedActions(true);
  }catch(err){
+  if(!sameSession(session)||err.stale)return;
   setActionStatus(`서버 전달 실패 (${completed}/${changes.length}건 성공) · 미전송 내용 보관 · ${err.message}`,true);
   console.warn('[DCM] save batch failed',err);
- }finally{savingBatch=false;updateSaveButton();if(partner===company)renderAction();}
+ }finally{if(sameSession(session)){savingBatch=false;updateSaveButton();renderAction();if(completed)void pullSharedActions(true);}}
 }
 function retryPendingUploads(){updateSaveButton();}
 function savePartnerOverride(k,field,value){
@@ -128,7 +170,7 @@ function savePartnerOverride(k,field,value){
  actionOverrides[k]=entry;localStorage.setItem(overrideKey(),JSON.stringify(actionOverrides));lastEditAt=Date.now();
  rebuildActions();updateSaveButton();
  window.DCMSRM?.update?.();
- setActionStatus('업체 입력이 임시 저장되었습니다 · 저장(마스터에게 전달) 버튼을 눌러주세요');
+ setActionStatus('업체 입력이 임시 저장되었습니다 · 저장(마스터에게 전달) 버튼을 눌러주세요',false,true);
 }
 function months(){return [...new Set(data.map(r=>r.month).filter(Boolean))].sort();}
 function scope(m){const o=$('outlet')?.value||'전체';return data.filter(r=>r.month===m&&(o==='전체'||r.outlet===o));}
@@ -383,13 +425,14 @@ function notifySrmAfterPaint(){
   if(srmAnnounced||!partnerVerified)return;
   srmAnnounced=true;
   if(typeof setTimeout!=='function'){window.dispatchEvent(new CustomEvent('dcm-partner-authenticated'));return;}
-  const company=partner;
+  const session=currentSession();
   srmNotifyTimer=setTimeout(()=>{
     srmNotifyTimer=null;
-    if(company===partner&&partnerVerified)window.dispatchEvent(new CustomEvent('dcm-partner-authenticated'));
+    if(sameSession(session)&&partnerVerified)window.dispatchEvent(new CustomEvent('dcm-partner-authenticated'));
   },120);
 }
 function applyShared(json){
+  validateActions(json);
   if(json.reasons&&typeof json.reasons==='object'&&!Array.isArray(json.reasons)){
     Object.keys(reasons).forEach(code=>{if(code==='05')reasons[code]='도매몰 미연동';}); // canonical seven categories only
   }
@@ -400,35 +443,38 @@ function applyShared(json){
   });
   actionOverrides=loadOverrides();rebuildActions();
 }
-function setActionStatus(msg,bad=false){
-  const el=$('actionSyncStatus');if(el){el.textContent=msg;el.className=bad?'sync-error':'sync-ok';}
+function setActionStatus(msg,bad=false,pending=false){
+  const el=$('actionSyncStatus');if(el){el.textContent=msg;el.className=bad?'sync-error':pending?'sync-pending':'sync-ok';}
 }
 async function pullSharedActions(force=false){
-  if(actionFetchBusy||!partner||!password||(!force&&(offlineServer||Date.now()-lastEditAt<10000||document.visibilityState==='hidden'||document.activeElement?.closest?.('#actionBody'))))return;
-  actionFetchBusy=true;
+  if(savingBatch||actionFetchBusy||!partner||!password||(!force&&(offlineServer||Date.now()-lastEditAt<10000||document.visibilityState==='hidden'||document.activeElement?.closest?.('#actionBody'))))return;
+  const session=currentSession(),ticket=++actionGeneration;actionFetchBusy=true;
   try{
-    const json=await request({type:'partnerActions',partner,password});offlineServer=false;
-    lastActionFullPullAt=Date.now();
-    if(Object.prototype.hasOwnProperty.call(json,'revision')){lastActionRevision=json.revision;revisionSupported=true;}
+    const json=await request({type:'partnerActions',partner,password});
+    if(!sameSession(session)||ticket!==actionGeneration)return;
+    validateActions(json);offlineServer=false;lastActionFullPullAt=Date.now();
     const old=JSON.stringify(remoteActions);applyShared(json);
+    if(Object.prototype.hasOwnProperty.call(json,'revision')){lastActionRevision=json.revision;revisionSupported=true;}
     cacheCurrentActions(json);
     if(JSON.stringify(remoteActions)!==old)renderAction();
-    setActionStatus('마스터·업체 Action 동기화 완료 · 미전송 내용 유지');updateSaveButton();
-  }catch(e){if(e.status===404)offlineServer=true;setActionStatus('공용 Action 조회 실패 · '+e.message,true);}
-  finally{actionFetchBusy=false;}
+    setActionStatus('마스터·업체 조치 확인 '+stamp(lastActionFullPullAt)+' · 미전송 '+pendingChanges().length+'건');updateSaveButton();
+  }catch(e){if(!sameSession(session)||ticket!==actionGeneration||e.stale)return;if(e.status===404)offlineServer=true;setActionStatus('조치 확인 실패 · 이전 조회·미전송 내용 유지 · '+e.message,true);}
+  finally{if(sameSession(session)&&ticket===actionGeneration)actionFetchBusy=false;}
 }
 async function checkActionRevision(){
-  if(actionCheckBusy||!partnerVerified||!partner||!password||document.visibilityState==='hidden'||Date.now()-lastEditAt<10000||document.activeElement?.closest?.('#actionBody'))return;
-  actionCheckBusy=true;
+  if(savingBatch||actionCheckBusy||!partnerVerified||!partner||!password||document.visibilityState==='hidden'||Date.now()-lastEditAt<10000||document.activeElement?.closest?.('#actionBody'))return;
+  const session=currentSession();actionCheckBusy=true;
   try{
     const json=await request({type:'partnerActionRevision',partner,password});
+    if(!sameSession(session))return;
     if(!revisionSupported||json.revision!==lastActionRevision)await pullSharedActions(false);
+    if(!sameSession(session))return;
     if(json.dashboardRevision&&json.dashboardRevision!==lastDashboardRevision&&!loadingData){void pull();}
-  }catch(e){if(e.status===404)offlineServer=true;console.warn('[DCM] Action revision check failed',e);
+  }catch(e){if(!sameSession(session)||e.stale)return;if(e.status===404)offlineServer=true;console.warn('[DCM] Action revision check failed',e);
     // Older GAS deployments may lack the lightweight revision endpoint.
     if(Date.now()-lastActionFullPullAt>60000)void pullSharedActions(true);
   }
-  finally{actionCheckBusy=false;}
+  finally{if(sameSession(session))actionCheckBusy=false;}
 }
 function startActionPolling(){
   clearInterval(actionPoll);clearInterval(dataPoll);
@@ -437,34 +483,39 @@ function startActionPolling(){
 }
 function renderEmpty(){['rate','kpiDeltaRate','xCount','needCount','supplyCount','x2o','o2x','targetNeed','deltaRate','newSupply','stopSupply','changeX2O'].forEach(id=>{if($(id))$(id).textContent='-';});['persistAbs','persistState','all3Abs','all3State'].forEach(id=>{if($(id))$(id).textContent='-';});actionContext=null;$('actionBody').innerHTML='<tr><td colspan="9" class="empty">표시할 데이터가 없습니다.</td></tr>';if($('actionFilterCount'))$('actionFilterCount').textContent='0처';$('entityCards').innerHTML=E.map(e=>`<div class="entity"><h3>${e}</h3><div class="rate">-</div></div>`).join('');}
 async function request(payload){
- const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),['partnerLogin','partnerActionRevision'].includes(payload.type)?9000:18000);
+ const generation=sessionGeneration,controller=new AbortController(),timer=setTimeout(()=>controller.abort(),['partnerLogin','partnerActionRevision'].includes(payload.type)?9000:18000);
+ ownedRequests.add(controller);
  try{
   const response=await fetch(ENDPOINT,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload),signal:controller.signal});
+  if(generation!==sessionGeneration)throw staleRequest();
   if(!response.ok){
     const error=new Error(response.status===404?'HTTP 404 · Google Apps Script 웹앱 주소/배포가 유효하지 않습니다':`HTTP ${response.status}`);
     error.status=response.status;throw error;
   }
   const text=await response.text();
+  if(generation!==sessionGeneration)throw staleRequest();
   let json;try{json=JSON.parse(text)}catch(_){throw new Error('서버에서 JSON이 아닌 응답을 보냈습니다. Apps Script 배포를 확인해 주세요.');}
-  if(!json.ok)throw new Error(json.error||'조회 실패');
+  if(!json||json.ok!==true)throw new Error(json?.error||'조회 실패');
   return json;
  }catch(err){
+  if(generation!==sessionGeneration)throw staleRequest();
   if(err.name==='AbortError')throw new Error('서버 응답 지연 · '+(['partnerLogin','partnerActionRevision'].includes(payload.type)?'인증/상태 확인 9초':'데이터 조회 18초')+' 제한시간 초과');
   throw err;
- }finally{clearTimeout(timer);}
+ }finally{clearTimeout(timer);ownedRequests.delete(controller);}
 }
 function snapshotKey(){return 'dcm-partner-last-data-v2::'+partner;}
 function actionSnapshotKey(){return 'dcm-partner-last-actions-v1::'+partner;}
 function loadCachedActions(){
  try{
   const stored=JSON.parse(sessionStorage.getItem(actionSnapshotKey())||'null');
-  if(!stored||!Array.isArray(stored.actions)||Date.now()-stored.savedAt>3600000)return false;
+  if(!stored||!Number.isFinite(stored.savedAt)||stored.savedAt>Date.now()||Date.now()-stored.savedAt>3600000)return false;
+  validateActions(stored);
   applyShared({actions:stored.actions});
   if(Object.prototype.hasOwnProperty.call(stored,'revision')){
     lastActionRevision=stored.revision;revisionSupported=true;
   }
   if(actionContext)renderAction();
-  setActionStatus('최근 Action 임시 표시 · 서버 최신값 확인 중');
+  setActionStatus('최근 조회 조치 · '+stamp(stored.savedAt)+' 기준 · 최신 확인 중',false,true);
   return true;
  }catch(_){return false;}
 }
@@ -477,82 +528,83 @@ function cacheCurrentActions(json){
 function loadCachedData(){
  try{
   const cached=JSON.parse(sessionStorage.getItem(snapshotKey())||'null');
-  if(!cached||!Array.isArray(cached.data)||Date.now()-cached.savedAt>3600000)return false;
+  if(!cached||!Number.isFinite(cached.savedAt)||cached.savedAt>Date.now()||Date.now()-cached.savedAt>3600000)return false;
+  validateDashboard(cached);
   data=cached.data;lastDashboardRevision=cached.dashboardRevision||'';historyCache.clear();historyInput=null;refreshSelectors();render();
-  $('syncMsg').textContent='이전 조회 결과 임시 표시 · 최신 데이터 확인 중...';
+  dashboardReceivedAt=cached.savedAt;dashboardUpdatedAt=cached.updatedAt||'';
+  setDashboardStatus('최근 조회 현황 · '+stamp(cached.savedAt)+' 기준 · 최신 확인 중','cached');
   return true;
  }catch(_){return false;}
 }
-function applyDashboard(json){
- const incoming=Array.isArray(json.data)?json.data:[];
+function applyDashboard(json,confirmed=true){
+ validateDashboard(json);const incoming=json.data;
  incoming.forEach(r=>{if(r.outlet==='백제약품 대전')r.manager='정직한';});
  const wasReady=!!data.length,changed=JSON.stringify(data)!==JSON.stringify(incoming);
  if(changed||!wasReady){data=incoming;historyCache.clear();historyInput=null;refreshSelectors();render();}
  lastDashboardRevision=String(json.dashboardRevision||'');
+ dashboardUpdatedAt=json.updatedAt||'';dashboardReceivedAt=Date.now();
  try{
-  const text=JSON.stringify({data,savedAt:Date.now(),dashboardRevision:lastDashboardRevision});
+  const text=JSON.stringify({data,savedAt:Date.now(),dashboardRevision:lastDashboardRevision,updatedAt:dashboardUpdatedAt});
   if(text.length<1400000)sessionStorage.setItem(snapshotKey(),text);
  }catch(_){}
- $('syncMsg').textContent=`마스터 최신 현황 적용 · ${data.length.toLocaleString()}건 · ${json.updatedAt||''}`;
- $('syncMsg').className='upload-msg sync-ok';
+ if(confirmed)confirmDashboard();else setDashboardStatus('마스터 보관 현황 · '+data.length.toLocaleString()+'건 · 최신 확인 중','cached');
  updateSaveButton();
 }
 async function pull(){
  if(!partner||!password||loadingData)return;
- loadingData=true;$('syncMsg').textContent='마스터 최신 데이터 불러오는 중...';
+ const session=currentSession();loadingData=true;setDashboardStatus(data.length?'최근 조회 현황 표시 중 · 최신 확인 중…':'마스터 현황 불러오는 중…');
  try{
   const json=await request({type:'partnerDashboard',partner,password});
-  offlineServer=false;partnerVerified=true;
-  applyDashboard(json);startActionPolling();
+  if(!sameSession(session))return;
+  applyDashboard(json);offlineServer=false;partnerVerified=true;startActionPolling();
   notifySrmAfterPaint();
   // Action/SRM endpoints are secondary: do not race the first KPI render.
-  const currentCompany=partner;
-  setTimeout(()=>{if(currentCompany===partner&&password)void pullSharedActions(true);},160);
+  setTimeout(()=>{if(sameSession(session)&&password)void pullSharedActions(true);},160);
  }catch(err){
+  if(!sameSession(session)||err.stale)return;
   if(err.status===404)offlineServer=true;
-  $('syncMsg').textContent='마스터 현황 연결 실패 · '+err.message;
-  $('syncMsg').className='upload-msg sync-error';
- }finally{loadingData=false;}
+  setDashboardStatus('최신 현황 확인 실패 · '+(data.length?'최근 조회 '+stamp(dashboardReceivedAt)+' 기준 유지 · ':'')+err.message,'error');
+ }finally{if(sameSession(session))loadingData=false;}
 }
 async function login(){
  if(loginInProgress)return;
  const company=$('loginPartner').value||'',secret=$('loginPassword').value||'';
  $('loginError').textContent='';
  if(!company||!secret){$('loginError').textContent='업체명과 접속코드를 입력해 주세요.';return;}
+ retireRequests();const generation=sessionGeneration;
  loginInProgress=true;$('loginBtn').disabled=true;$('loginBtn').textContent='인증 중...';
  try{
   // A warm server snapshot can return KPIs and Action values in the LOGIN response.
   // If the cache is cold the same endpoint authenticates immediately without scanning sheets.
   const json=await request({type:'partnerLogin',partner:company,password:secret,preferCachedDashboard:true});
+  if(generation!==sessionGeneration)return;
   partner=json.partner||company;password=secret;offlineServer=false;partnerVerified=true;
   sessionStorage.setItem(SESSION_PARTNER,partner);sessionStorage.setItem(SESSION_PASSWORD,password);
   $('partnerName').textContent=partner;$('partnerLogin').classList.add('hidden-login');
-  const warmAction=!!(json.actionSnapshot&&Array.isArray(json.actionSnapshot.actions));
-  if(warmAction){
+  let warmAction=false,cached=false;
+  if(json.actionSnapshot)try{
     applyShared(json.actionSnapshot);lastActionRevision=json.actionSnapshot.revision||'';
-    revisionSupported=true;cacheCurrentActions(json.actionSnapshot);
-    setActionStatus('서버 캐시에서 최신 Action 데이터 표시');
-  }else loadCachedActions();
-  const warmDashboard=!!(json.dashboardSnapshot&&Array.isArray(json.dashboardSnapshot.data));
-  if(warmDashboard)applyDashboard(json.dashboardSnapshot);
-  const cached=warmDashboard||loadCachedData();
+    revisionSupported=true;lastActionFullPullAt=Date.now();cacheCurrentActions(json.actionSnapshot);warmAction=true;
+  }catch(e){setActionStatus(e.message,true);}
+  if(!warmAction)loadCachedActions();
+  if(json.dashboardSnapshot)try{applyDashboard(json.dashboardSnapshot,false);cached=true;}catch(e){setDashboardStatus(e.message,'error');}
+  if(!cached)cached=loadCachedData();
   updateSaveButton();
+  if(warmAction)setActionStatus('마스터·업체 조치 확인 '+stamp(lastActionFullPullAt)+' · 미전송 '+pendingChanges().length+'건');
   const unchanged=!!(cached&&json.dashboardRevision&&json.dashboardRevision===lastDashboardRevision);
   if(cached)notifySrmAfterPaint();
   if(unchanged){
+    confirmDashboard();
     startActionPolling();
     if(!warmAction){
-      const currentCompany=partner;
-      setTimeout(()=>{if(currentCompany===partner&&password)void pullSharedActions(true);},160);
+      const session=currentSession();
+      setTimeout(()=>{if(sameSession(session)&&password)void pullSharedActions(true);},160);
     }
-    $('syncMsg').textContent=warmDashboard?
-      '서버 최신 현황 바로 표시 · 변경사항 자동 확인':
-      '최근 확인한 최신 데이터 표시 중 · 변경사항 자동 확인';
   }else{void pull();}
- }catch(err){$('loginError').textContent=err.message||'로그인에 실패했습니다.';}
- finally{loginInProgress=false;$('loginBtn').disabled=false;$('loginBtn').textContent='접속하기';}
+ }catch(err){if(generation===sessionGeneration&&!err.stale)$('loginError').textContent=err.message||'로그인에 실패했습니다.';}
+ finally{if(generation===sessionGeneration){loginInProgress=false;$('loginBtn').disabled=false;$('loginBtn').textContent='접속하기';}}
 }
-function logout(clear=true){clearInterval(actionPoll);clearInterval(dataPoll);clearTimeout(srmNotifyTimer);clearTimeout(srmRenderTimer);srmAnnounced=false;historyInput=null;lastDashboardRevision='';partner='';password='';partnerVerified=false;lastActionRevision=null;revisionSupported=false;actionFetchBusy=false;lastActionFullPullAt=0;
+function logout(clear=true){retireRequests();clearInterval(actionPoll);clearInterval(dataPoll);clearTimeout(srmNotifyTimer);clearTimeout(srmRenderTimer);srmAnnounced=false;historyInput=null;lastDashboardRevision='';partner='';password='';partnerVerified=false;lastActionRevision=null;revisionSupported=false;actionFetchBusy=false;actionCheckBusy=false;loadingData=false;savingBatch=false;loginInProgress=false;lastActionFullPullAt=0;dashboardReceivedAt=0;dashboardUpdatedAt='';setDashboardStatus('접속 후 마스터 현황을 확인합니다.','empty');setActionStatus('접속 후 조치 내용을 확인합니다.',false,true);$('loginBtn').disabled=false;$('loginBtn').textContent='접속하기';$('loginError').textContent='';
  window.dispatchEvent(new CustomEvent('dcm-partner-logged-out'));data=[];actions=[];remoteActions=[];actionIndex.clear();actionOverrides={};historyCache.clear();actionContext=null;actionView='supplied';actionBase='supplied';actionDetail='all';actionSearch='';activeKpi=null;actionLimit=30;offlineServer=false;updateSaveButton();if($('actionView'))$('actionView').value='supplied';if($('actionDetail'))$('actionDetail').value='all';if($('actionSearch'))$('actionSearch').value='';if(clear){sessionStorage.removeItem(SESSION_PARTNER);sessionStorage.removeItem(SESSION_PASSWORD);}$('partnerName').textContent='-';$('partnerLogin').classList.remove('hidden-login');$('loginPassword').value='';renderEmpty();}
 async function exportActions(){const cur=$('month')?.value;if(!cur)return;try{await ensureXLSX();}catch(e){alert(e.message||e);return;}const prev=prevMonth(cur),curr=scope(cur),prior=prev?scope(prev):[],ch=L.compare(prior,curr),ctx=actionContext?.month===cur?actionContext:buildActionContext(cur,curr,prior,ch,risks(cur,curr,prior,ch)),rr=filterActionRows(ctx,actionView,'all',actionSearch);const rows=rr.map(r=>{const a=actionFor(r),c=a.reasonCode||'',m=a.masterAction||a,p=a.partnerAction||{},owned=new Set(p.editedFields||[]),pv=f=>owned.has(f)?String(p[f]??''):'';return {'파트너사':partner,'기준월':cur,'업체/권역':r.outlet,'실사업자번호':r.businessNo,'실사업자명':r.businessName,'미연동 기간':hasCurrentX(r)?`${r.streak}개월`:'—','대웅제약':L.normStatus(r.statuses?.['대웅제약'])||'','대웅바이오':L.normStatus(r.statuses?.['대웅바이오'])||'','한올바이오':L.normStatus(r.statuses?.['한올바이오'])||'','원인코드':c,'원인':reasons[c]||'','조치계획':a.plan||'','상태':statusLabel(a.status||'TODO'),'마스터 원인코드':m.reasonCode||'','업체 원인코드':pv('reasonCode'),'마스터 조치계획':m.plan||'','업체 조치계획':pv('plan'),'마스터 상태':statusLabel(m.status||'TODO'),'업체 상태':pv('status')?statusLabel(pv('status')):'','업체 수정일시':p.updatedAt||''};});const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),'Action Board');XLSX.writeFile(wb,`DCM_ActionBoard_${partner}_${cur}_${actionView}.xlsx`);}
 function start(){
