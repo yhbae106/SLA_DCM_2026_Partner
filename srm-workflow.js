@@ -13,6 +13,15 @@ const canHistory=()=>isPartner()?
  !!(window.DCMPartnerSRM?.isAuthenticated?.()??window.DCMPartnerSRM?.name?.()):
  !!window.DCMActionSync?.isConnected?.();
 let events=[],selected='',entity='대웅제약',filter='all',loading=false,ready=false,generation=0,lastPartnerHistoryRows=null;
+let listSearch='',listLimit=150,listScope='',listOwner=null;
+function clearListContext(){
+ listSearch='';listLimit=150;filter='all';
+ if($('srmSearch'))$('srmSearch').value='';
+ if($('srmFilter'))$('srmFilter').value='all';
+ $('srmWorkflow')?.querySelectorAll?.('[data-srm-filter]').forEach(card=>{
+  const active=card.dataset.srmFilter==='all';card.classList.toggle('srm-active',active);card.setAttribute('aria-pressed',active?'true':'false');
+ });
+}
 const labels={OPEN:'확인 요청',CHECKING:'원인 확인',ERP_WAIT:'ERP 협의',IN_PROGRESS:'조치 진행',
  DONE:'조치 완료',VERIFIED:'X→O 검증 완료',REOPENED:'재확인 필요'};
 const draftKey=()=> 'dcm-srm-draft::'+(isPartner()?window.DCMPartnerSRM?.name():'master')+'::'+selected+'::'+entity;
@@ -51,6 +60,12 @@ function render(){
   month,latestMonth:monthList[monthList.length-1]||month,viewRows:displayedRows()
  })||{stats:{},records:[]};
  const stats=result.stats,records=result.records,loaded=raw.length>0;
+ const identity=isPartner()?window.DCMPartnerSRM?.name?.()||'':'master';
+ if(listOwner!==identity){clearListContext();listOwner=identity;}
+ const owner=isPartner()?identity:$('manager')?.value||'전체',outlet=$('outlet')?.value||'전체';
+ const scopeKey=JSON.stringify([month,owner,outlet]);
+ if(scopeKey!==listScope){listScope=scopeKey;listLimit=150;}
+ if($('srmScope'))$('srmScope').textContent=[month||'기준월 선택',owner==='전체'?'담당자 전체':owner,outlet==='전체'?'업체/권역 전체':outlet].filter(Boolean).join(' · ')+' 기준';
  const values={srmManaged:stats.total,srmConsulted:stats.recorded,srmNeedsAction:stats.needsAction,
   srmOpen:stats.displayProgress,srmDone:stats.displayDone,srmVerified:stats.verified};
  for(const [id,value] of Object.entries(values)){
@@ -60,15 +75,19 @@ function render(){
   filter==='open'&&r.needsAction||filter==='progress'&&r.displayProgress||
   filter==='done'&&r.displayDone||filter==='verified'&&r.verified||
   filter==='consulted'&&r.events.length>0;
- const shown=records.filter(match),byKey=new Map(raw.filter(r=>r.month===month)
-  .map(r=>[r.outlet+'|||'+r.businessNo,r]));
+ const byKey=new Map(raw.filter(r=>r.month===month).map(r=>[r.outlet+'|||'+r.businessNo,r]));
+ const query=listSearch.trim().toLocaleLowerCase('ko'),numberQuery=query.replace(/[\s-]/g,'');
+ const shown=records.filter(r=>match(r)&&(!query||
+  [byKey.get(r.key)?.businessName,r.businessName,r.outlet].some(v=>String(v||'').toLocaleLowerCase('ko').includes(query))||
+  (!!numberQuery&&String(r.businessNo||'').replace(/[\s-]/g,'').includes(numberQuery))));
+ const visible=shown.slice(0,listLimit);
  if($('srmCount'))$('srmCount').textContent=loaded?
   month+' · '+shown.length+'처 / 관리 '+records.length+'처':'DCM 데이터 불러오는 중';
- $('srmBody').innerHTML=shown.slice(0,150).map(r=>{
+ $('srmBody').innerHTML=visible.map(r=>{
   const row=byKey.get(r.key),ox=row?E.map(e=>row.statuses?.[e]||'—').join(' / '):
    (r.oxSnapshot?r.oxSnapshot.split('/').join(' / '):'— / — / —');
   return '<tr><td data-label="거래처"><button class="srm-link" data-srm-open="'+esc(r.key)+
-   '" data-srm-entity="'+esc(r.entity||E[0])+'">'+esc(r.businessName||r.businessNo)+
+   '" data-srm-entity="'+esc(r.entity||E[0])+'">'+esc(row?.businessName||r.businessName||r.businessNo)+
    '</button><small>'+esc(r.outlet)+' · '+esc(r.businessNo)+'</small></td>'+
    '<td data-label="3사 O/X">'+esc(ox)+'</td>'+
    '<td data-label="조치 이력">'+esc(r.recordSource)+'</td>'+
@@ -77,10 +96,12 @@ function render(){
  }).join('')||'<tr><td colspan="5" class="srm-empty">'+(
   !loaded?'DCM 데이터 불러오는 중':
   filter==='consulted'&&!ready?'추가 협의 이력은 로그인 후 조회할 수 있습니다.':
+  query?'검색 결과가 없습니다. 거래처명·사업자번호·업체 또는 선택한 상태를 확인해 주세요.':
   '선택한 조건에 해당하는 거래처가 없습니다. 다른 상태를 선택해 주세요.'
  )+'</td></tr>';
- if($('srmSourceNote'))$('srmSourceNote').textContent=shown.length>150?
-  '150처까지 표시했습니다. 거래처 상태나 검색 조건으로 나머지를 확인해 주세요.':'';
+ if($('srmSourceNote'))$('srmSourceNote').textContent=shown.length>visible.length?
+  visible.length+' / '+shown.length+'처 표시 · 더 보기로 나머지 거래처를 확인할 수 있습니다.':'';
+ const more=$('srmMore');if(more){more.hidden=visible.length>=shown.length;more.textContent=Math.min(150,shown.length-visible.length)+'처 더 보기';}
  syncHistoryUI();
 }
 async function refresh(){
@@ -207,7 +228,8 @@ async function submit(ev){
   loading=false;
  }finally{if(ticket===generation){loading=false;syncHistoryUI();}}
 }
-function authChanged(){
+function authChanged(event){
+ if(event?.type==='dcm-partner-logged-out'){clearListContext();listOwner=null;}
  if(!canHistory()){
   generation++;loading=false;ready=false;events=[];
   if($('srmEditor'))$('srmEditor').hidden=true;
@@ -224,6 +246,7 @@ function mount(){
  root.innerHTML='<div class="srm-head"><div><h2>SRM 거래처 조치 현황</h2>'+
  '<p>거래처별 조치 현황과 DCM 연동 개선 결과를 확인할 수 있습니다.</p></div>'+
  '<button id="srmRefresh" type="button">로그인 후 추가 이력</button></div>'+
+ '<p id="srmScope" class="srm-message"></p>'+
  '<div class="srm-metrics">'+
  '<div role="button" tabindex="0" data-srm-filter="all" aria-label="관리 대상 거래처 조회">관리 대상<b id="srmManaged">—</b></div>'+
  '<div role="button" tabindex="0" data-srm-filter="progress" aria-label="진행중 거래처 조회">진행중<b id="srmOpen">—</b></div>'+
@@ -235,11 +258,13 @@ function mount(){
  '<option value="all">전체</option><option value="recorded">조치 이력 있음</option>'+
  '<option value="open">확인·조치 필요</option><option value="progress">진행중</option>'+
  '<option value="done">완료</option><option value="verified">DCM X→O 개선</option>'+
- '<option value="consulted">추가 협의 기록</option></select></label><span id="srmCount"></span></div>'+
+ '<option value="consulted">추가 협의 기록</option></select></label>'+
+ '<label class="srm-search">거래처 찾기<input id="srmSearch" type="search" placeholder="거래처명 · 사업자번호 · 업체" autocomplete="off" aria-controls="srmBody"></label>'+
+ '<button id="srmReset" type="button">목록 초기화</button><span id="srmCount" role="status" aria-live="polite"></span></div>'+
  '<div class="srm-table"><table><thead><tr><th>거래처</th><th>3사 O/X</th>'+
  '<th>조치 이력</th><th>관리 상태</th><th>다음 조치</th></tr></thead>'+
  '<tbody id="srmBody"></tbody></table></div>'+
- '<p id="srmSourceNote" class="srm-message"></p>'+
+ '<div class="srm-list-footer"><p id="srmSourceNote" class="srm-message"></p><button id="srmMore" type="button" hidden>150처 더 보기</button></div>'+
  '<p id="srmMsg" class="srm-message" role="status" aria-live="polite"></p>'+
  '<div id="srmEditor" hidden><div class="srm-head"><div><h3 id="srmTitle">추가 협의·검증 기록</h3>'+
  '<p>ACTION BOARD의 원인·조치계획·상태를 다시 입력할 필요가 없습니다.</p></div>'+
@@ -282,7 +307,10 @@ function mount(){
  .srm-metrics>div:nth-child(2),.srm-metrics>div:nth-child(4){border-left:2px solid #c3d7ee}
  .srm-message:empty{display:none}
  .srm-metrics b{display:block;margin-top:7px;font-size:24px;color:#155d9f}
- .srm-head select{min-height:34px;padding:4px 10px;border:1px solid #cfdded;background:#fff}
+ .srm-head select,.srm-search input{min-height:34px;padding:4px 10px;border:1px solid #cfdded;border-radius:6px;background:#fff;color:inherit;font:inherit}
+ .srm-search{display:flex;align-items:center;gap:7px;flex:1;min-width:220px}.srm-search input{width:100%;min-width:0}
+ .srm-list-footer{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:8px}
+ .srm-workflow [hidden]{display:none!important}
  .srm-table{width:100%;max-width:100%;max-height:370px;overflow-x:hidden;overflow-y:auto;border:1px solid #e2eaf3;border-radius:8px}
  .srm-table table{width:100%;min-width:0;table-layout:fixed;border-collapse:collapse;font-size:11px}
  .srm-table th{position:sticky;top:0;background:#edf3fb;text-align:left;z-index:2}
@@ -321,7 +349,7 @@ function mount(){
  document.head.appendChild(st);
  $('srmRefresh').onclick=()=>void refresh();
  const selectFilter=value=>{
-  filter=value;
+  filter=value;listLimit=150;
   if($('srmFilter'))$('srmFilter').value=value;
   root.querySelectorAll?.('[data-srm-filter]').forEach(card=>{
    const active=card.dataset.srmFilter===value;
@@ -331,6 +359,9 @@ function mount(){
   render();
  };
  $('srmFilter').onchange=e=>selectFilter(e.target.value);
+ const search=$('srmSearch');if(search)search.oninput=e=>{listSearch=e.target.value;listLimit=150;render();};
+ const reset=$('srmReset');if(reset)reset.onclick=()=>{listSearch='';if(search)search.value='';selectFilter('all');};
+ const more=$('srmMore');if(more)more.onclick=()=>{listLimit+=150;render();};
  root.querySelectorAll?.('[data-srm-filter]').forEach(card=>{
   card.addEventListener('click',()=>selectFilter(card.dataset.srmFilter));
   card.addEventListener('keydown',e=>{

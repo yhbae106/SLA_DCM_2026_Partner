@@ -138,3 +138,15 @@
 @media(max-width:630px){
   #action .table-wrap tbody td:nth-child(7),#action .table-wrap tbody td:nth-child(8){grid-column:1/-1;}
 }
+
+/* Keep the current scope and explicit save action reachable during review. */
+.workbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 14px;margin:0 0 14px;background:#f7faff;border:1px solid #cedef1;border-radius:10px;box-shadow:0 4px 12px #18365b0a}
+.workbar-scope{min-width:0}.workbar-scope span{display:block;font-size:10px;color:#61758d;margin-bottom:3px}.workbar-scope strong{font-size:12px;color:#153e6b;overflow-wrap:anywhere}
+.workbar-links{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}.workbar button{font:inherit;font-size:11px;font-weight:800;padding:8px 10px;border-radius:7px;background:#fff;border:1px solid #cddced;color:#285980;cursor:pointer}
+.workbar button:hover,.workbar button.active{background:#e6f0ff;color:#145eaf}.workbar #workSave{background:#146ac2;border-color:#146ac2;color:#fff}.workbar #workSave:disabled{background:#ecf2f8;border-color:#d9e4ef;color:#6b7e91;cursor:default}
+.workbar button:focus-visible,.change-link:focus-visible{outline:3px solid #2563eb;outline-offset:2px}
+#action,#changes,#srmWorkflow{scroll-margin-top:95px}
+.action-scope-row{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin:10px 0 0;font-size:11px;color:#315b81;line-height:1.5}.action-scope-row [hidden]{display:none!important}
+.changes .change-link{font:inherit;text-align:left;border:1px solid #d0e1f3;background:#f2f7ff;border-radius:10px;padding:12px;color:#234b77;cursor:pointer}.changes .change-link:hover{border-color:#70a6dd;background:#e8f2ff}.changes .change-link span{color:#2a64a0;font-weight:750}
+.action-field:focus-visible{outline:2px solid #2879ca;outline-offset:2px}
+@media(max-width:900px){.workbar{gap:8px;flex-wrap:wrap;padding:9px 10px}.workbar-links{justify-content:flex-start}.workbar button{font-size:10px;padding:7px 9px}#action,#changes,#srmWorkflow{scroll-margin-top:130px}}

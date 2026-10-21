@@ -6,6 +6,17 @@ function relationKey(r){return `${r.outlet}|||${r.businessNo}`;}
 // Absolute counts are unique within each wholesaler/outlet, not globally across wholesalers.
 function absoluteKey(r){return relationKey(r);}
 function monthSort(a,b){return a.localeCompare(b);}
+// Missing calendar months or merchant records break a continuous-X period.
+function consecutiveX(month,statusAtMonth){
+ if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(String(month||''))||typeof statusAtMonth!=='function')return 0;
+ let [year,number]=month.split('-').map(Number),count=0;
+ while(year>=0){
+  const key=String(year).padStart(4,'0')+'-'+String(number).padStart(2,'0');
+  if(normStatus(statusAtMonth(key))!=='X')break;
+  count++;if(--number===0){number=12;year--;}
+ }
+ return count;
+}
 function filterRecords(data,opts={}){return data.filter(r=>(!opts.month||r.month===opts.month)&&(!opts.manager||opts.manager==='전체'||r.manager===opts.manager)&&(!opts.outlet||opts.outlet==='전체'||r.outlet===opts.outlet));}
 function hasSupply(r){return !!r&&E.some(e=>{const s=normStatus(r.statuses?.[e]);return s==='O'||s==='X';});}
 function summarize(records){
@@ -34,5 +45,5 @@ function compare(prevRecords,currRecords){
  return {xToO,oToX,newSupply,stoppedSupply};
 }
 function needList(records){return records.filter(r=>E.some(e=>normStatus(r.statuses?.[e])==='X')).map(r=>({...r,xCount:E.filter(e=>normStatus(r.statuses?.[e])==='X').length}));}
-global.DCMLogic={E,normStatus,relationKey,absoluteKey,monthSort,filterRecords,summarize,compare,needList};
+global.DCMLogic={E,normStatus,relationKey,absoluteKey,monthSort,consecutiveX,filterRecords,summarize,compare,needList};
 })(typeof window!=='undefined'?window:globalThis);

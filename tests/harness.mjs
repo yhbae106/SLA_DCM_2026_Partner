@@ -75,6 +75,9 @@ await import('./srm-metrics-regression.mjs');
 await import('./srm-ui-regression.mjs');
 await import('./srm-action-parity-regression.mjs');
 await import('./partner-reliability-regression.mjs');
+await import('./partner-usability-regression.mjs');
+await import('./srm-list-regression.mjs');
+await import('./calendar-streak-regression.mjs');
 
 const ctx={};ctx.window=ctx;ctx.globalThis=ctx;vm.createContext(ctx);vm.runInContext(read('logic.js'),ctx);
 const L=ctx.DCMLogic;if(!L)fail('DCMLogic not exported');
@@ -95,9 +98,9 @@ ok('core DCM calculations');
 
 const localAssets=[...new Set(refs)].filter(exists);
 const initialBytes=fs.statSync('index.html').size+localAssets.reduce((s,p)=>s+fs.statSync(p).size,0);
-// Main at a9534ce already shipped 135,532 bytes; session/snapshot/save guards add
-// about 6 KB without extra dependencies or initial requests. Keep a tight ceiling.
-if(initialBytes>143000)fail('Initial local payload budget exceeded: '+initialBytes);
+// Scope/navigation, explicit quick save, and searchable SRM pagination add about
+// 10 KB to the reliability release, with no new libraries or startup requests.
+if(initialBytes>155000)fail('Initial local payload budget exceeded: '+initialBytes);
 ok('initial local payload '+Math.round(initialBytes/1024)+' KB');
 
 const partnerJs=read('partner.js');
