@@ -7,6 +7,7 @@ const reasons={'01':'ERP/시스템 미구축','02':'도입 품목 미연동','03
 const SESSION_PARTNER='dcm-partner-login-company',SESSION_PASSWORD='dcm-partner-login-password';
 let partner='',password='',partnerVerified=false,data=[],actions=[],remoteActions=[],actionIndex=new Map(),actionOverrides={},actionPoll=null,dataPoll=null,lastActionRevision=null,lastDashboardRevision='',revisionSupported=false,actionCheckBusy=false,actionFetchBusy=false,lastActionFullPullAt=0,srmAnnounced=false,srmNotifyTimer=null,srmRenderTimer=null,historyInput=null,lastEditAt=0,actionLimit=30,riskLimit=60,historyCache=new Map(),saveQueue=Promise.resolve(),inFlight=new Set(),savingBatch=false,loadingData=false,loginInProgress=false,offlineServer=false,actionView='supplied',actionBase='supplied',actionDetail='all',actionSearch='',actionContext=null,activeKpi=null;
 let sessionGeneration=0,actionGeneration=0,dashboardReceivedAt=0,dashboardUpdatedAt='',dashboardState='empty';
+let outletCount=0;
 const ownedRequests=new Set();
 const currentSession=()=>({generation:sessionGeneration,company:partner,secret:password});
 const sameSession=s=>s.generation===sessionGeneration&&s.company===partner&&s.secret===password;
@@ -177,7 +178,21 @@ function savePartnerOverride(k,field,value){
 function months(){return [...new Set(data.map(r=>r.month).filter(Boolean))].sort();}
 function scope(m){const o=$('outlet')?.value||'전체';return data.filter(r=>r.month===m&&(o==='전체'||r.outlet===o));}
 function prevMonth(cur){const ms=months(),i=ms.indexOf(cur);return i>0?ms[i-1]:null;}
-function refreshSelectors(){const oldO=$('outlet')?.value||'전체',oldM=$('month')?.value||'';const outs=[...new Set(data.map(r=>r.outlet).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));$('outlet').innerHTML=['전체',...outs].map(x=>`<option>${esc(x)}</option>`).join('');$('outlet').value=['전체',...outs].includes(oldO)?oldO:'전체';const ms=months();$('month').innerHTML=ms.length?ms.map(m=>`<option value="${m}">${monthLabel(m)}</option>`).join(''):'<option value="">데이터 없음</option>';$('month').value=ms.includes(oldM)?oldM:(ms.at(-1)||'');}
+function refreshSelectors(){
+ const oldO=$('outlet')?.value||'전체',oldM=$('month')?.value||'',wasSingle=outletCount===1;
+ // Retain historical regions so monthly comparisons and stopped supply remain reachable.
+ const outs=[...new Set(data.map(r=>r.outlet).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));
+ outletCount=outs.length;
+ const choices=outletCount===1?outs:['전체',...outs],select=$('outlet');
+ select.innerHTML=choices.map(x=>`<option>${esc(x)}</option>`).join('');
+ select.value=outletCount===1?outs[0]:!wasSingle&&choices.includes(oldO)?oldO:'전체';
+ select.disabled=outletCount<2;
+ if($('outletFilter'))$('outletFilter').hidden=outletCount<2;
+ $('partnerFilters')?.classList.toggle('single-outlet',outletCount<2);
+ const ms=months();
+ $('month').innerHTML=ms.length?ms.map(m=>`<option value="${m}">${monthLabel(m)}</option>`).join(''):'<option value="">데이터 없음</option>';
+ $('month').value=ms.includes(oldM)?oldM:(ms.at(-1)||'');
+}
 function streakRows(cur,curr){
   let all=historyCache.get(cur);
   if(!all){
@@ -218,7 +233,10 @@ function comparison(prior,curr,available){
 }
 function selectionLabel(){
  const cur=$('month')?.value;
- return cur?`${monthLabel(cur)} · ${partner} · ${$('outlet')?.value||'전체'}`:'로그인 후 조회 범위가 표시됩니다';
+ if(!cur)return partner?partner+' · 조회 자료 없음':'로그인 후 조회 범위가 표시됩니다';
+ const outlet=$('outlet')?.value||'전체';
+ const region=outletCount>1||outletCount===1&&outlet!==partner?outlet:'';
+ return [monthLabel(cur),partner,region].filter(Boolean).join(' · ');
 }
 function jumpTo(id){
  const target=$(id);if(!target)return;
@@ -530,7 +548,7 @@ function startActionPolling(){
   actionPoll=setInterval(()=>checkActionRevision(),12000);
   dataPoll=setInterval(()=>{if(document.visibilityState==='visible'&&Date.now()-lastEditAt>10000&&!document.activeElement?.closest?.('#actionBody'))pull();},180000);
 }
-function renderEmpty(){if($('workScope'))$('workScope').textContent=partner?partner+' · 조회 자료 없음':'로그인 후 조회 범위가 표시됩니다';if($('actionScope'))$('actionScope').textContent='조회 자료 없음';if($('actionSearchClear'))$('actionSearchClear').hidden=true;if($('actionShown'))$('actionShown').textContent='0 / 0처 표시';if($('actionMore'))$('actionMore').hidden=true;['rate','kpiDeltaRate','xCount','needCount','supplyCount','x2o','o2x','targetNeed','deltaRate','newSupply','stopSupply','changeX2O'].forEach(id=>{if($(id))$(id).textContent='-';});['persistAbs','persistState','all3Abs','all3State'].forEach(id=>{if($(id))$(id).textContent='-';});actionContext=null;$('actionBody').innerHTML='<tr><td colspan="9" class="empty">표시할 데이터가 없습니다.</td></tr>';if($('actionFilterCount'))$('actionFilterCount').textContent='0처';$('entityCards').innerHTML=E.map(e=>`<div class="entity"><h3>${e}</h3><div class="rate">-</div></div>`).join('');}
+function renderEmpty(){if($('scopeLabel'))$('scopeLabel').textContent=selectionLabel();if($('workScope'))$('workScope').textContent=selectionLabel();if($('actionScope'))$('actionScope').textContent='조회 자료 없음';if($('actionSearchClear'))$('actionSearchClear').hidden=true;if($('actionShown'))$('actionShown').textContent='0 / 0처 표시';if($('actionMore'))$('actionMore').hidden=true;['rate','kpiDeltaRate','xCount','needCount','supplyCount','x2o','o2x','targetNeed','deltaRate','newSupply','stopSupply','changeX2O'].forEach(id=>{if($(id))$(id).textContent='-';});['persistAbs','persistState','all3Abs','all3State'].forEach(id=>{if($(id))$(id).textContent='-';});actionContext=null;$('actionBody').innerHTML='<tr><td colspan="9" class="empty">표시할 데이터가 없습니다.</td></tr>';if($('actionFilterCount'))$('actionFilterCount').textContent='0처';$('entityCards').innerHTML=E.map(e=>`<div class="entity"><h3>${e}</h3><div class="rate">-</div></div>`).join('');}
 async function request(payload){
  const generation=sessionGeneration,controller=new AbortController(),timer=setTimeout(()=>controller.abort(),['partnerLogin','partnerActionRevision'].includes(payload.type)?9000:18000);
  ownedRequests.add(controller);
@@ -654,7 +672,7 @@ async function login(){
  finally{if(generation===sessionGeneration){loginInProgress=false;$('loginBtn').disabled=false;$('loginBtn').textContent='접속하기';}}
 }
 function logout(clear=true){setDashboardAccess(false);retireRequests();clearInterval(actionPoll);clearInterval(dataPoll);clearTimeout(srmNotifyTimer);clearTimeout(srmRenderTimer);srmAnnounced=false;historyInput=null;lastDashboardRevision='';partner='';password='';partnerVerified=false;lastActionRevision=null;revisionSupported=false;actionFetchBusy=false;actionCheckBusy=false;loadingData=false;savingBatch=false;loginInProgress=false;lastActionFullPullAt=0;dashboardReceivedAt=0;dashboardUpdatedAt='';setDashboardStatus('접속 후 마스터 현황을 확인합니다.','empty');setActionStatus('접속 후 조치 내용을 확인합니다.',false,true);$('loginBtn').disabled=false;$('loginBtn').textContent='접속하기';$('loginError').textContent='';
- window.dispatchEvent(new CustomEvent('dcm-partner-logged-out'));data=[];actions=[];remoteActions=[];actionIndex.clear();actionOverrides={};historyCache.clear();actionContext=null;actionView='supplied';actionBase='supplied';actionDetail='all';actionSearch='';activeKpi=null;actionLimit=30;offlineServer=false;updateSaveButton();if($('actionView'))$('actionView').value='supplied';if($('actionDetail'))$('actionDetail').value='all';if($('actionSearch'))$('actionSearch').value='';if(clear){sessionStorage.removeItem(SESSION_PARTNER);sessionStorage.removeItem(SESSION_PASSWORD);}$('partnerName').textContent='-';$('partnerLogin').classList.remove('hidden-login');$('loginPassword').value='';renderEmpty();}
+ window.dispatchEvent(new CustomEvent('dcm-partner-logged-out'));data=[];actions=[];remoteActions=[];actionIndex.clear();actionOverrides={};historyCache.clear();actionContext=null;actionView='supplied';actionBase='supplied';actionDetail='all';actionSearch='';activeKpi=null;actionLimit=30;offlineServer=false;updateSaveButton();if($('actionView'))$('actionView').value='supplied';if($('actionDetail'))$('actionDetail').value='all';if($('actionSearch'))$('actionSearch').value='';if(clear){sessionStorage.removeItem(SESSION_PARTNER);sessionStorage.removeItem(SESSION_PASSWORD);}$('partnerName').textContent='-';$('partnerLogin').classList.remove('hidden-login');$('loginPassword').value='';refreshSelectors();renderEmpty();}
 async function exportActions(){const cur=$('month')?.value;if(!cur)return;try{await ensureXLSX();}catch(e){alert(e.message||e);return;}const prev=prevMonth(cur),curr=scope(cur),prior=prev?scope(prev):[],ch=comparison(prior,curr,!!prev),ctx=actionContext?.month===cur?actionContext:buildActionContext(cur,curr,prior,ch,risks(cur,curr,prior,ch)),rr=filterActionRows(ctx,actionView,'all',actionSearch);const rows=rr.map(r=>{const a=actionFor(r),c=a.reasonCode||'',m=a.masterAction||a,p=a.partnerAction||{},owned=new Set(p.editedFields||[]),pv=f=>owned.has(f)?String(p[f]??''):'';return {'파트너사':partner,'기준월':cur,'업체/권역':r.outlet,'실사업자번호':r.businessNo,'실사업자명':r.businessName,'미연동 기간':hasCurrentX(r)?`${r.streak}개월`:'—','대웅제약':L.normStatus(r.statuses?.['대웅제약'])||'','대웅바이오':L.normStatus(r.statuses?.['대웅바이오'])||'','한올바이오':L.normStatus(r.statuses?.['한올바이오'])||'','원인코드':c,'원인':reasons[c]||'','조치계획':a.plan||'','상태':statusLabel(a.status||'TODO'),'마스터 원인코드':m.reasonCode||'','업체 원인코드':pv('reasonCode'),'마스터 조치계획':m.plan||'','업체 조치계획':pv('plan'),'마스터 상태':statusLabel(m.status||'TODO'),'업체 상태':pv('status')?statusLabel(pv('status')):'','업체 수정일시':p.updatedAt||''};});const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),'Action Board');XLSX.writeFile(wb,`DCM_ActionBoard_${partner}_${cur}_${actionView}.xlsx`);}
 function start(){
   const resetContext=()=>{actionLimit=30;render();};
@@ -726,6 +744,6 @@ function srmVisibleStates(){
  });
 }
 
-window.DCMPartnerSRM={rows:()=>data,actionRows:()=>actions,viewRows:srmVisibleStates,name:()=>partner,isAuthenticated:()=>partnerVerified&&!!partner&&!!password,request:x=>{if(!partner||!password)throw Error('파트너 로그인 후 이용해 주세요.');return request({...x,partner,password});}};
+window.DCMPartnerSRM={rows:()=>data,actionRows:()=>actions,viewRows:srmVisibleStates,name:()=>partner,scopeLabel:selectionLabel,isAuthenticated:()=>partnerVerified&&!!partner&&!!password,request:x=>{if(!partner||!password)throw Error('파트너 로그인 후 이용해 주세요.');return request({...x,partner,password});}};
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();

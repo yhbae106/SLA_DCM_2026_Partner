@@ -65,7 +65,8 @@ function render(){
  const owner=isPartner()?identity:$('manager')?.value||'전체',outlet=$('outlet')?.value||'전체';
  const scopeKey=JSON.stringify([month,owner,outlet]);
  if(scopeKey!==listScope){listScope=scopeKey;listLimit=150;}
- if($('srmScope'))$('srmScope').textContent=[month||'기준월 선택',owner==='전체'?'담당자 전체':owner,outlet==='전체'?'업체/권역 전체':outlet].filter(Boolean).join(' · ')+' 기준';
+ const partnerScope=isPartner()?window.DCMPartnerSRM?.scopeLabel?.():'';
+ if($('srmScope'))$('srmScope').textContent=(partnerScope||[month||'기준월 선택',owner==='전체'?'담당자 전체':owner,outlet==='전체'?'업체/권역 전체':outlet].filter(Boolean).join(' · '))+' 기준';
  const values={srmManaged:stats.total,srmConsulted:stats.recorded,srmNeedsAction:stats.needsAction,
   srmOpen:stats.displayProgress,srmDone:stats.displayDone,srmVerified:stats.verified};
  for(const [id,value] of Object.entries(values)){

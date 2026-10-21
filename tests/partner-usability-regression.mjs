@@ -12,7 +12,7 @@ function fixture(){
   if(nodes.has(id))return nodes.get(id);
   const classes=new Set(),listeners=new Map();let markup='';
   const node={id,value:'',textContent:'',hidden:false,disabled:false,dataset:{},attributes:{},inert:false,options:[],listeners,
-   classList:{add:x=>classes.add(x),remove:x=>classes.delete(x),toggle(x,on){on?classes.add(x):classes.delete(x);}},
+   classList:{add:x=>classes.add(x),remove:x=>classes.delete(x),contains:x=>classes.has(x),toggle(x,on){on?classes.add(x):classes.delete(x);}},
    setAttribute(k,v){this.attributes[k]=v;},addEventListener(k,fn){if(!listeners.has(k))listeners.set(k,[]);listeners.get(k).push(fn);},
    fire(k,event={}){return Promise.all((listeners.get(k)||[]).map(fn=>fn({target:this,...event})));},
    scrollIntoView(){scrolled.push(id);},focus(){node.focused=true;},
@@ -35,7 +35,7 @@ function fixture(){
  };ctx.window=ctx;ctx.globalThis=ctx;vm.createContext(ctx);vm.runInContext(fs.readFileSync('logic.js','utf8'),ctx);
  assert.ok(source.includes(hook));
  vm.runInContext(source.replace(hook,`window.testPartner={start,render,refreshSelectors,setActionView,savePartnerOverride,updateSaveButton,logout,login,exportActions,
-  setData:rows=>{data=rows;historyCache.clear();},setSession:()=>{partner='테스트 업체';password='fixture';partnerVerified=true;},
+  setData:rows=>{data=rows;historyCache.clear();},setSession:(name='테스트 업체')=>{partner=name;password='fixture';partnerVerified=true;},
   mockRequest:fn=>{request=fn;},selection:()=>({base:actionBase,detail:actionDetail,view:actionView,search:actionSearch,limit:actionLimit})};`),ctx);
  const api=ctx.testPartner;
  api.mockRequest(async payload=>{requests.push(payload);if(payload.type==='partnerSaveActions')return {ok:true,results:payload.changes};return {ok:true,actions:[]};});
@@ -122,3 +122,76 @@ console.log('PASS Partner usability: sticky save counts merchants separately fro
  assert.equal(element('actionShown').textContent,'0 / 0처 표시');assert.equal(element('actionMore').hidden,true);
 }
 console.log('PASS Partner usability: logged-out dashboard is inert, successful login restores controls, logout removes stale list metadata');
+
+{
+ const {api,ctx,element,requests,exported}=fixture(),single=data.filter(r=>r.outlet==='권역 A');
+ const options=()=>element('outlet').options.map(o=>o.value);
+ api.setSession('권역 A');api.setData(single);api.refreshSelectors();api.render();
+ assert.equal(element('outletFilter').hidden,true);assert.equal(element('outlet').disabled,true);
+ assert.equal(element('partnerFilters').classList.contains('single-outlet'),true);
+ assert.deepEqual(options(),['권역 A']);assert.equal(element('outlet').value,'권역 A');
+ for(const id of ['scopeLabel','workScope','actionScope'])assert.equal(element(id).textContent,'2026년 9월 · 권역 A');
+ assert.equal(ctx.DCMPartnerSRM.scopeLabel(),element('workScope').textContent);
+ assert.equal(element('rate').textContent,'33.3%');assert.equal(element('xCount').textContent,'2');
+ assert.equal(element('needCount').textContent,'2');assert.equal(element('supplyCount').textContent,'3');
+ assert.equal((element('actionBody').innerHTML.match(/<tr class=/g)||[]).length,3);
+ assert.deepEqual(Array.from(ctx.DCMPartnerSRM.viewRows(),r=>r.key).sort(),
+  ['111-11-11111','222-22-22222','444-44-44444','555-55-55555'].map(no=>'권역 A|||'+no).sort(),
+  'SRM must keep the same single outlet, including the prior-month stopped merchant');
+ await api.exportActions();assert.deepEqual(Array.from(exported.at(-1),r=>r['실사업자명']).sort(),['Alpha','Beta','New']);
+ assert.ok(exported.at(-1).every(r=>r['업체/권역']==='권역 A'));
+
+ api.savePartnerOverride('권역 A|||222-22-22222','plan','작성 중 조치 유지');
+ element('month').value='2026-08';await element('month').fire('change');api.refreshSelectors();api.render();
+ assert.equal(element('month').value,'2026-08');assert.match(element('actionBody').innerHTML,/작성 중 조치 유지/);
+ api.setData(data);api.refreshSelectors();api.render();
+ assert.equal(element('outletFilter').hidden,false);assert.equal(element('outlet').disabled,false);
+ assert.equal(element('partnerFilters').classList.contains('single-outlet'),false);
+ assert.deepEqual(options(),['전체','권역 A','권역 B']);assert.equal(element('outlet').value,'전체',
+  'A newly available outlet must not be excluded by the former automatic single-outlet value');
+ assert.equal(element('month').value,'2026-08');assert.match(element('pendingActionCount').textContent,/1처 · 1개 항목/);
+ element('outlet').value='권역 B';await element('outlet').fire('change');
+ api.setData(data.filter(r=>r.outlet!=='권역 B'||r.month==='2026-08'));api.refreshSelectors();
+ assert.equal(element('outlet').value,'권역 B','An explicit valid multi-outlet selection survives refresh');
+ element('month').value='2026-09';await element('month').fire('change');
+ assert.equal(element('outletFilter').hidden,false,'Earlier-month outlets remain selectable for stopped-supply comparisons');
+ api.setActionView('stopped',{scroll:false});assert.match(element('actionBody').innerHTML,/Gamma/);
+ api.setData(single);api.refreshSelectors();api.setActionView('supplied',{scroll:false});api.render();
+ assert.equal(element('outletFilter').hidden,true);assert.equal(element('outlet').value,'권역 A');
+ assert.equal(element('month').value,'2026-09');assert.match(element('actionBody').innerHTML,/작성 중 조치 유지/);
+
+ api.setSession('파트너 A');api.refreshSelectors();api.render();
+ assert.equal(element('workScope').textContent,'2026년 9월 · 파트너 A · 권역 A',
+  'A distinct sole outlet stays readable in scope text without a redundant selector');
+ assert.equal(ctx.DCMPartnerSRM.scopeLabel(),element('workScope').textContent);
+ api.setData([]);api.refreshSelectors();api.render();
+ assert.equal(element('outletFilter').hidden,true);assert.equal(element('outlet').disabled,true);
+ assert.equal(element('month').value,'');assert.notEqual(element('outlet').value,'권역 A');
+ assert.match(element('actionBody').innerHTML,/표시할 데이터가 없습니다/);
+ assert.doesNotMatch(element('scopeLabel').textContent,/권역 A/,'Empty data must not retain the previous scope');
+ assert.equal(requests.length,0,'Automatic scope changes, refreshes and exports do not submit staged actions');
+}
+console.log('PASS Partner single outlet: hidden automatic scope, matching KPI/board/export/SRM, all-month choices and 0/1/many transitions preserve valid month and drafts');
+
+{
+ const {api,ctx,element}=fixture(),first=data.filter(r=>r.outlet==='권역 A').map(r=>({...r,outlet:'인천약품'}));
+ const signIn=async(name,rows)=>{
+  element('loginPartner').value=name;element('loginPassword').value='fixture';
+  api.mockRequest(async()=>({ok:true,partner:name,dashboardRevision:name,
+   dashboardSnapshot:{data:rows,dashboardRevision:name},actionSnapshot:{actions:[]}}));
+  await api.login();
+ };
+ await signIn('인천약품',first);assert.equal(element('outletFilter').hidden,true);
+ api.savePartnerOverride('인천약품|||222-22-22222','plan','이전 파트너 작성 내용');
+ api.logout();assert.equal(ctx.DCMPartnerSRM.name(),'');assert.equal(element('month').value,'');
+ assert.notEqual(element('outlet').value,'인천약품');assert.equal(element('outletFilter').hidden,true);
+ assert.equal(element('outlet').disabled,true);assert.doesNotMatch(element('scopeLabel').textContent,/인천약품/);
+ await signIn('복수 파트너',data);
+ assert.equal(element('outletFilter').hidden,false);assert.equal(element('outlet').disabled,false);
+ assert.equal(element('outlet').value,'전체');assert.equal(element('partnerFilters').classList.contains('single-outlet'),false);
+ assert.match(element('scopeLabel').textContent,/복수 파트너/);assert.doesNotMatch(element('scopeLabel').textContent,/인천약품/);
+ assert.doesNotMatch(element('actionBody').innerHTML,/이전 파트너 작성 내용/);
+ assert.equal(element('workSave').disabled,true);assert.equal(ctx.DCMPartnerSRM.name(),'복수 파트너');
+ assert.equal(ctx.DCMPartnerSRM.scopeLabel(),element('workScope').textContent);
+}
+console.log('PASS Partner single outlet: logout clears hidden selection and account switch restores the next partner scope without prior drafts');

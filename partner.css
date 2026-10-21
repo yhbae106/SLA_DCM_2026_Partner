@@ -161,3 +161,8 @@
 .side-note .side-contact span{margin-top:3px}
 .side-contact .side-contact-phone{margin-top:4px;color:#e2ecff;font-size:12px;font-weight:700;white-space:nowrap}
 @media(min-width:901px) and (max-height:560px){.side{overflow-y:auto}.side-note{position:static;margin-top:24px}}
+
+/* A region selector is useful only when the partner has multiple regions. */
+#outletFilter[hidden]{display:none!important}
+.filters.single-outlet{grid-template-columns:200px 150px minmax(0,1fr)}
+@media(max-width:900px){.filters.single-outlet{grid-template-columns:minmax(0,1fr)}}
