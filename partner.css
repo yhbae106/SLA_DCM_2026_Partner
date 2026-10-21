@@ -150,3 +150,14 @@
 .changes .change-link{font:inherit;text-align:left;border:1px solid #d0e1f3;background:#f2f7ff;border-radius:10px;padding:12px;color:#234b77;cursor:pointer}.changes .change-link:hover{border-color:#70a6dd;background:#e8f2ff}.changes .change-link span{color:#2a64a0;font-weight:750}
 .action-field:focus-visible{outline:2px solid #2879ca;outline-offset:2px}
 @media(max-width:900px){.workbar{gap:8px;flex-wrap:wrap;padding:9px 10px}.workbar-links{justify-content:flex-start}.workbar button{font-size:10px;padding:7px 9px}#action,#changes,#srmWorkflow{scroll-margin-top:130px}}
+
+/* Partner master identity and contact details. */
+.top-actions{align-items:flex-start}
+.partner-account{display:flex;flex-direction:column;align-items:flex-end;gap:7px}
+.partner-account .partner-logout{margin-left:0}
+.partner-master{color:#53657f;font-size:12px;font-weight:700;line-height:1.5;white-space:nowrap}
+.side-contact{margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid rgba(255,255,255,.2);color:#fff;font-size:12px;line-height:1.5}
+.side-contact strong{font-size:13px}
+.side-note .side-contact span{margin-top:3px}
+.side-contact .side-contact-phone{margin-top:4px;color:#e2ecff;font-size:12px;font-weight:700;white-space:nowrap}
+@media(min-width:901px) and (max-height:560px){.side{overflow-y:auto}.side-note{position:static;margin-top:24px}}
