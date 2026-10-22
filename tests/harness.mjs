@@ -58,7 +58,7 @@ if(JSON.stringify(actionOptions('actionView'))!==JSON.stringify(expectedBase)||
  JSON.stringify(actionOptions('actionDetail'))!==JSON.stringify(expectedDetails))
  fail('Partner filters must contain only 2 merchant views and 7 essential details, with no history/group selector');
 ok('required partner DOM contract');
-const actionHeader=html.match(/<div class="table-wrap"><table><thead><tr>(.*?)<\/tr>/)?.[1]||'';
+const actionHeader=html.match(/<div class="table-wrap"[^>]*><table><thead><tr>(.*?)<\/tr>/)?.[1]||'';
 if((actionHeader.match(/<th/g)||[]).length!==9||actionHeader.includes('완료 예정일'))fail('Partner Action Board must have exactly nine visible columns without due date');
 const responsiveCss=read('partner.css');
 if(!responsiveCss.includes('table-layout:fixed')||!responsiveCss.includes('overflow-x:hidden')||!responsiveCss.includes('@media(max-width:1180px)'))fail('Partner Action Board responsive layout or horizontal scroll guard missing');
@@ -340,3 +340,5 @@ ok('Partner July stopped merchant: cause/plan/status visible, archival due date 
 
 
 console.log('HARNESS_OK');
+
+await import('./polling-regression.mjs');
