@@ -100,7 +100,8 @@ const localAssets=[...new Set(refs)].filter(exists);
 const initialBytes=fs.statSync('index.html').size+localAssets.reduce((s,p)=>s+fs.statSync(p).size,0);
 // Scope/navigation, explicit quick save, and searchable SRM pagination add about
 // 10 KB to the reliability release, with no new libraries or startup requests.
-if(initialBytes>155000)fail('Initial local payload budget exceeded: '+initialBytes);
+// Install UI, manifest and home-screen icon: allow at most 16 KB extra, no library dependency.
+if(initialBytes>171000)fail('Initial local payload budget exceeded: '+initialBytes);
 ok('initial local payload '+Math.round(initialBytes/1024)+' KB');
 
 const partnerJs=read('partner.js');
@@ -342,3 +343,5 @@ ok('Partner July stopped merchant: cause/plan/status visible, archival due date 
 console.log('HARNESS_OK');
 
 await import('./polling-regression.mjs');
+
+await import('./pwa-regression.mjs');
