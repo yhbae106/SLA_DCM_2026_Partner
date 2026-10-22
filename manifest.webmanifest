@@ -1,0 +1,26 @@
+{
+  "id": "/SLA_DCM_2026_Partner/",
+  "name": "DCM 파트너 대시보드",
+  "short_name": "DCM 파트너",
+  "description": "대웅제약 DCM 연동 현황 및 조치 관리",
+  "lang": "ko-KR",
+  "start_url": "/SLA_DCM_2026_Partner/",
+  "scope": "/SLA_DCM_2026_Partner/",
+  "display": "standalone",
+  "background_color": "#f4f7fb",
+  "theme_color": "#087f83",
+  "icons": [
+    {
+      "src": "app-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "app-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
