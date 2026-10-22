@@ -7,11 +7,11 @@ const reasons={'01':'ERP/시스템 미구축','02':'도입 품목 미연동','03
 const SESSION_PARTNER='dcm-partner-login-company',SESSION_PASSWORD='dcm-partner-login-password';
 let partner='',password='',partnerVerified=false,data=[],actions=[],remoteActions=[],actionIndex=new Map(),actionOverrides={},actionPoll=null,dataPoll=null,lastActionRevision=null,lastDashboardRevision='',revisionSupported=false,actionCheckBusy=false,actionFetchBusy=false,lastActionFullPullAt=0,srmAnnounced=false,srmNotifyTimer=null,srmRenderTimer=null,historyInput=null,lastEditAt=0,actionLimit=30,riskLimit=60,historyCache=new Map(),saveQueue=Promise.resolve(),inFlight=new Set(),savingBatch=false,loadingData=false,loginInProgress=false,offlineServer=false,actionView='supplied',actionBase='supplied',actionDetail='all',actionSearch='',actionContext=null,activeKpi=null;
 let sessionGeneration=0,actionGeneration=0,dashboardReceivedAt=0,dashboardUpdatedAt='',dashboardState='empty';
-let outletCount=0;
+let outletCount=0,revisionRetryAt=0,revisionFailures=0;
 const ownedRequests=new Set();
 const currentSession=()=>({generation:sessionGeneration,company:partner,secret:password});
 const sameSession=s=>s.generation===sessionGeneration&&s.company===partner&&s.secret===password;
-function retireRequests(){sessionGeneration++;for(const controller of ownedRequests)controller.abort();ownedRequests.clear();}
+function retireRequests(){revisionRetryAt=0;revisionFailures=0;sessionGeneration++;for(const controller of ownedRequests)controller.abort();ownedRequests.clear();}
 function staleRequest(){const error=new Error('이전 접속의 요청이 취소되었습니다.');error.stale=true;return error;}
 const stamp=value=>{const n=new Date(value);return Number.isFinite(n.getTime())?n.toLocaleString('ko-KR',{timeZone:'Asia/Seoul',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}):'';};
 function setDashboardStatus(message,state='loading'){
@@ -529,24 +529,25 @@ async function pullSharedActions(force=false){
   finally{if(sameSession(session)&&ticket===actionGeneration)actionFetchBusy=false;}
 }
 async function checkActionRevision(){
-  if(savingBatch||actionCheckBusy||!partnerVerified||!partner||!password||document.visibilityState==='hidden'||Date.now()-lastEditAt<10000||document.activeElement?.closest?.('#actionBody'))return;
+  if(navigator.onLine===false||Date.now()<revisionRetryAt||savingBatch||actionCheckBusy||!partnerVerified||!partner||!password||document.visibilityState==='hidden'||Date.now()-lastEditAt<10000||document.activeElement?.closest?.('#actionBody'))return;
   const session=currentSession();actionCheckBusy=true;
   try{
     const json=await request({type:'partnerActionRevision',partner,password});
     if(!sameSession(session))return;
+    revisionFailures=0;revisionRetryAt=0;
     if(!revisionSupported||json.revision!==lastActionRevision)await pullSharedActions(false);
     if(!sameSession(session))return;
     if(json.dashboardRevision&&json.dashboardRevision!==lastDashboardRevision&&!loadingData){void pull();}
-  }catch(e){if(!sameSession(session)||e.stale)return;if(e.status===404)offlineServer=true;console.warn('[DCM] Action revision check failed',e);
+  }catch(e){if(!sameSession(session)||e.stale)return;if(e.status===404)offlineServer=true;revisionRetryAt=Date.now()+Math.min(300000,30000*2**Math.min(revisionFailures++,4));console.warn('[DCM] Action revision check failed',e);
     // Older GAS deployments may lack the lightweight revision endpoint.
-    if(Date.now()-lastActionFullPullAt>60000)void pullSharedActions(true);
+    if(e.status!==401&&e.status!==403&&Date.now()-lastActionFullPullAt>60000)void pullSharedActions(true);
   }
   finally{if(sameSession(session))actionCheckBusy=false;}
 }
 function startActionPolling(){
   clearInterval(actionPoll);clearInterval(dataPoll);
   actionPoll=setInterval(()=>checkActionRevision(),12000);
-  dataPoll=setInterval(()=>{if(document.visibilityState==='visible'&&Date.now()-lastEditAt>10000&&!document.activeElement?.closest?.('#actionBody'))pull();},180000);
+  dataPoll=setInterval(()=>{if(navigator.onLine!==false&&document.visibilityState==='visible'&&Date.now()-lastEditAt>10000&&!document.activeElement?.closest?.('#actionBody'))pull();},180000);
 }
 function renderEmpty(){if($('scopeLabel'))$('scopeLabel').textContent=selectionLabel();if($('workScope'))$('workScope').textContent=selectionLabel();if($('actionScope'))$('actionScope').textContent='조회 자료 없음';if($('actionSearchClear'))$('actionSearchClear').hidden=true;if($('actionShown'))$('actionShown').textContent='0 / 0처 표시';if($('actionMore'))$('actionMore').hidden=true;['rate','kpiDeltaRate','xCount','needCount','supplyCount','x2o','o2x','targetNeed','deltaRate','newSupply','stopSupply','changeX2O'].forEach(id=>{if($(id))$(id).textContent='-';});['persistAbs','persistState','all3Abs','all3State'].forEach(id=>{if($(id))$(id).textContent='-';});actionContext=null;$('actionBody').innerHTML='<tr><td colspan="9" class="empty">표시할 데이터가 없습니다.</td></tr>';if($('actionFilterCount'))$('actionFilterCount').textContent='0처';$('entityCards').innerHTML=E.map(e=>`<div class="entity"><h3>${e}</h3><div class="rate">-</div></div>`).join('');}
 async function request(payload){
@@ -719,7 +720,8 @@ function start(){
   $('logoutBtn').onclick=()=>logout(true);
   $('loginBtn').onclick=login;
   $('loginPassword').addEventListener('keydown',ev=>{if(ev.key==='Enter')login();});
-  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')pullSharedActions();});
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')void checkActionRevision();});
+  window.addEventListener('online',()=>{revisionRetryAt=0;void checkActionRevision();});
   window.addEventListener('storage',ev=>{
     if(partner&&ev.key===overrideKey()){actionOverrides=loadOverrides();rebuildActions();renderAction();}
   });
