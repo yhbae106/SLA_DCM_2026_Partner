@@ -34,7 +34,7 @@ function fixture(){
   DCMSRM:{update(){}}
  };ctx.window=ctx;ctx.globalThis=ctx;vm.createContext(ctx);vm.runInContext(fs.readFileSync('logic.js','utf8'),ctx);
  assert.ok(source.includes(hook));
- vm.runInContext(source.replace(hook,`window.testPartner={start,render,refreshSelectors,setActionView,savePartnerOverride,updateSaveButton,logout,login,exportActions,
+ vm.runInContext(source.replace(hook,`window.testPartner={start,render,refreshSelectors,applyDashboard,setActionView,savePartnerOverride,updateSaveButton,logout,login,exportActions,
   setData:rows=>{data=rows;historyCache.clear();},setSession:(name='테스트 업체')=>{partner=name;password='fixture';partnerVerified=true;},
   mockRequest:fn=>{request=fn;},selection:()=>({base:actionBase,detail:actionDetail,view:actionView,search:actionSearch,limit:actionLimit})};`),ctx);
  const api=ctx.testPartner;
@@ -195,3 +195,16 @@ console.log('PASS Partner single outlet: hidden automatic scope, matching KPI/bo
  assert.equal(ctx.DCMPartnerSRM.scopeLabel(),element('workScope').textContent);
 }
 console.log('PASS Partner single outlet: logout clears hidden selection and account switch restores the next partner scope without prior drafts');
+
+{
+ const {api,element}=fixture();api.setSession('권역 A');
+ const rows=[row('2026-07','권역 A','test','초기','X')];
+ api.applyDashboard({data:rows,dashboardRevision:'old'});
+ const complete=[...rows,{...rows[0],month:'2026-09'},{...rows[0],month:'2026-10'}];
+ api.applyDashboard({data:complete,dashboardRevision:'new'});
+ assert.equal(element('month').value,'2026-10');
+ element('month').value='2026-09';await element('month').fire('change');
+ api.applyDashboard({data:[...complete,{...rows[0],month:'2026-11'}],dashboardRevision:'next'});
+ assert.equal(element('month').value,'2026-09');
+ console.log('PASS Partner follows the latest confirmed month and preserves an explicit historical selection');
+}
